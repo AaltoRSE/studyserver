@@ -1,0 +1,15 @@
+<h1>Your Dashboard</h1>
+<p>Hello, {{ user.username }}!</p>
+
+<h2>Your Data Sources</h2>
+<ul>
+{% for source in user.profile.data_sources.all %}
+    <li>{{ source.name }} ({{ source.get_real_instance_class_name }})</li>
+{% empty %}
+    <li>You have not added any data sources yet.</li>
+{% endfor %}
+</ul>
+
+<a href="{% url 'add_json_source' %}">Add a new JSON URL Source</a>
+
+<p><a href="{% url 'logout' %}">Logout</a></p>

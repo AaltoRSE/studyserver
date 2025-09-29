@@ -1,0 +1,7 @@
+<h1>Add a JSON URL Data Source</h1>
+<p>Give your data source a personal name and provide the full URL where the JSON data can be found.</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save Data Source</button>
+</form>
