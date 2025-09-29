@@ -4,7 +4,10 @@
 <h2>Your Data Sources</h2>
 <ul>
 {% for source in user.profile.data_sources.all %}
-    <li>{{ source.name }} ({{ source.get_real_instance_class_name }})</li>
+<li>
+    <a href="{% url 'view_data_source' source.id %}">{{ source.name }}</a> 
+    ({{ source.display_type }})
+</li>
 {% empty %}
     <li>You have not added any data sources yet.</li>
 {% endfor %}
