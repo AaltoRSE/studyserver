@@ -1,13 +1,17 @@
 from django.contrib import admin
 from polymorphic.admin import PolymorphicParentModelAdmin, PolymorphicChildModelAdmin
-from .models import DataSource, JsonUrlDataSource
+from .models import DataSource, AwareDataSource, JsonUrlDataSource
 
 @admin.register(JsonUrlDataSource)
 class JsonUrlDataSourceAdmin(PolymorphicChildModelAdmin):
+    base_model = DataSource
+
+@admin.register(AwareDataSource)
+class AwareDataSourceAdmin(PolymorphicChildModelAdmin):
     base_model = DataSource
 
 @admin.register(DataSource)
 class DataSourceAdmin(PolymorphicParentModelAdmin):
     base_model = DataSource
     
-    child_models = (JsonUrlDataSource,)
+    child_models = (JsonUrlDataSource, AwareDataSource)
