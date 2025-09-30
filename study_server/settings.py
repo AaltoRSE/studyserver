@@ -108,6 +108,13 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+AWARE_DB_HOST = env('AWARE_DB_HOST', default='localhost')
+AWARE_DB_PORT = env('AWARE_DB_PORT', default='3306')
+AWARE_DB_NAME = env('AWARE_DB_NAME', default='aware_db')
+AWARE_DB_USER = env('AWARE_DB_USER', default='user')
+AWARE_DB_PASSWORD = env('AWARE_DB_PASSWORD', default='password')
+
+
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 

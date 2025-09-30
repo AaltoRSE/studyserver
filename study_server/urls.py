@@ -25,5 +25,4 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('accounts/', include('users.urls')),
     path('data-sources/', include('data_sources.urls')),
-    path('api/aware_config/', data_source_views.aware_config_api, name='aware_config_api'),
 ]

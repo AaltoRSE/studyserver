@@ -1,4 +1,5 @@
 import requests
+import uuid
 from django.db import models
 from polymorphic.models import PolymorphicModel
 from users.models import Profile
@@ -41,8 +42,16 @@ class JsonUrlDataSource(DataSource):
         except requests.exceptions.RequestException as e:
             return {"error": f"Could not fetch data from URL: {e}"}
 
+
 class AwareDataSource(DataSource):
-    device_id = models.CharField(max_length=150, unique=True, blank=True, null=True)
+    STATUS_CHOICES = (
+        ("pending", "Pending Confirmation"),
+        ("active", "Active"),
+    )
+    device_label = models.CharField(max_length=150, unique=True, default="", help_text="An identifier for your device. You will need to write this into the Aware app.")
+    aware_device_id = models.CharField(max_length=150, unique=True, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     @property
     def display_type(self):
