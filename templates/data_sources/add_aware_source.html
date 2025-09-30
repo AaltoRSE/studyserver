@@ -1,0 +1,7 @@
+<h1>Add an Aware Data Source</h1>
+<p>Give a name to the device you are installing Aware from.</p>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save Data Source</button>
+</form>

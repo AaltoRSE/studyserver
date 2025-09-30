@@ -27,15 +27,29 @@ class JsonUrlDataSource(DataSource):
 
     @property
     def display_type(self):
-        """ The user-friendly name for this specific data source type """
+        """Returns a user-friendly name for the data source type."""
         return "JSON URL"
 
     def fetch_data(self):
-        """Fetches and returns the JSON data from the source URL."""
+        """Fetches and returns the JSON data from the source URL.
+        
+        No formatting or processing, just returns the string."""
         try:
             response = requests.get(self.url, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             return {"error": f"Could not fetch data from URL: {e}"}
+
+class AwareDataSource(DataSource):
+    device_id = models.CharField(max_length=150, unique=True, blank=True, null=True)
+
+    @property
+    def display_type(self):
+        return "AWARE Mobile"
+    
+    def fetch_data(self):
+        """Get's the users data from the AWARE server"""
+
+        return "Data"
 
