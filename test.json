@@ -1,6 +1,6 @@
 {
-    "_id": "",
-    "device_label": "test_label",
+    "_id": "device_id",
+    "label": "label",
     "study_info": {
       "study_title": "Polalpha",
       "study_description": "Alpha study for POLWELL and POLEMIC",
