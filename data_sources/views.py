@@ -30,9 +30,7 @@ def add_aware_source(request):
     if request.method == 'POST':
         form = AwareDataSourceForm(request.POST)
         if form.is_valid():
-            # Create the new source, but don't save to the DB yet
             new_source = form.save(commit=False)
-            # Assign the current user's profile and save
             new_source.profile = request.user.profile
             new_source.save()
             # Redirect to the instruction page for the newly created source
