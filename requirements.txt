@@ -4,3 +4,4 @@ django-environ
 django-polymorphic
 requests
 mysql-connector-python
+qrcode[pil]

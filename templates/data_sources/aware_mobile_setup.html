@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWARE Setup</title>
+    <style>
+        body { font-family: sans-serif; padding: 1em; line-height: 1.6; }
+        .item { margin-bottom: 2em; }
+        .label { font-weight: bold; }
+        .value { background-color: #eee; padding: 0.5em; border-radius: 5px; word-wrap: break-word; }
+        button { padding: 0.5em 1em; margin-top: 0.5em; }
+    </style>
+</head>
+<body>
+    <h1>AWARE Device Setup</h1>
+    <p>Copy the following values into the AWARE app on your phone.</p>
+
+    <div class="item">
+        <p class="label">1. Device Label:</p>
+        <p id="deviceLabel" class="value">{{ source.device_label }}</p>
+        <button onclick="copyToClipboard('deviceLabel')">Copy Label</button>
+    </div>
+
+    <div class="item">
+        <p class="label">2. Study URL:</p>
+        <p id="configUrl" class="value">{{ config_url }}</p>
+        <button onclick="copyToClipboard('configUrl')">Copy URL</button>
+    </div>
+
+    <script>
+        function copyToClipboard(elementId) {
+            const textToCopy = document.getElementById(elementId).innerText;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(err => {
+                alert('Failed to copy!');
+            });
+        }
+    </script>
+</body>
+</html>

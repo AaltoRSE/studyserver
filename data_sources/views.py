@@ -7,8 +7,9 @@ from django.contrib import messages
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm
 from .models import DataSource, AwareDataSource
 import json
-
-
+import qrcode
+import io
+import base64
 
 @login_required
 def add_json_source(request):
@@ -46,15 +47,34 @@ def add_aware_source(request):
 def aware_instructions(request, source_id):
     source = get_object_or_404(AwareDataSource, id=source_id, profile=request.user.profile)
 
-    config_url = request.build_absolute_uri(
-        reverse('aware_config_api', kwargs={'token': source.config_token})
+    mobile_setup_url = request.build_absolute_uri(
+        reverse('aware_mobile_setup', kwargs={'token': source.config_token})
     )
+    qr_img = qrcode.make(mobile_setup_url)
+    buffer = io.BytesIO()
+    qr_img.save(buffer, format='PNG')
+    qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
     context = {
-        'config_url': config_url,
-        'source': source
+        'source': source,
+        'qr_code_image': qr_b64,
+        'qr_link': mobile_setup_url,
     }
     return render(request, 'data_sources/aware_instructions.html', context)
 
+def aware_mobile_setup(request, token):
+    source = get_object_or_404(AwareDataSource, config_token=token)
+    
+    config_url = request.build_absolute_uri(
+        reverse('aware_config_api', kwargs={'token': source.config_token})
+    )
+    
+    context = {
+        'source': source,
+        'config_url': config_url,
+        'device_label': source.device_label
+    }
+    return render(request, 'data_sources/aware_mobile_setup.html', context)
 
 @login_required
 def view_data_source(request, source_id):
