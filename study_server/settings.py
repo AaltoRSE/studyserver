@@ -111,8 +111,10 @@ AUTH_PASSWORD_VALIDATORS = [
 AWARE_DB_HOST = env('AWARE_DB_HOST', default='localhost')
 AWARE_DB_PORT = env('AWARE_DB_PORT', default='3306')
 AWARE_DB_NAME = env('AWARE_DB_NAME', default='aware_db')
-AWARE_DB_USER = env('AWARE_DB_USER', default='user')
-AWARE_DB_PASSWORD = env('AWARE_DB_PASSWORD', default='password')
+AWARE_DB_INSERT_USER = env('AWARE_DB_INSERT_USER', default='user')
+AWARE_DB_INSERT_PASSWORD = env('AWARE_DB_INSERT_PASSWORD', default='password')
+AWARE_DB_RO_USER = env('AWARE_DB_RO_USER', default='user')
+AWARE_DB_RO_PASSWORD = env('AWARE_DB_RO_PASSWORD', default='password')
 
 
 # Internationalization

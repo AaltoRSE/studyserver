@@ -9,4 +9,4 @@ class JsonUrlDataSourceForm(forms.ModelForm):
 class AwareDataSourceForm(forms.ModelForm):
     class Meta:
         model = AwareDataSource
-        fields = ['name', 'device_label']
+        fields = ['name']

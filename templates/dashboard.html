@@ -7,6 +7,11 @@
 <li>
     <a href="{% url 'view_data_source' source.id %}">{{ source.name }}</a> 
     ({{ source.display_type }})
+
+    {% if source.model_name == 'AwareDataSource' and source.status == 'pending' %}
+        - <em>Pending Confirmation</em> 
+        <a href="{% url 'confirm_aware_source' source.id %}">(Confirm Connection)</a>
+    {% endif %}
 </li>
 {% empty %}
     <li>You have not added any data sources yet.</li>

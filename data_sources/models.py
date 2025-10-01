@@ -3,6 +3,8 @@ import uuid
 from django.db import models
 from polymorphic.models import PolymorphicModel
 from users.models import Profile
+from . import db_connector
+
 
 class DataSource(PolymorphicModel):
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='data_sources')
@@ -48,7 +50,7 @@ class AwareDataSource(DataSource):
         ("pending", "Pending Confirmation"),
         ("active", "Active"),
     )
-    device_label = models.CharField(max_length=150, unique=True, default="", help_text="An identifier for your device. You will need to write this into the Aware app.")
+    device_label = models.CharField(max_length=150, unique=True, default=uuid.uuid4)
     aware_device_id = models.CharField(max_length=150, unique=True, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -57,8 +59,29 @@ class AwareDataSource(DataSource):
     def display_type(self):
         return "AWARE Mobile"
     
-    def fetch_data(self):
-        """Get's the users data from the AWARE server"""
+    def confirm_device(self):
+        if self.status == 'active':
+            return (True, "This device is already active.")
 
-        return "Data"
+        retrieved_device_id = db_connector.get_aware_device_id_for_label(self.device_label)
+
+        if not retrieved_device_id:
+            return (False, "No data with that device label. It may take a few hours for data to appear. Please ensure AWARE is running on your device.") 
+
+        is_claimed = AwareDataSource.objects.filter(aware_device_id=retrieved_device_id).exclude(id=self.id).exists()
+        if is_claimed:
+            return (False, "Error: This device ID has already been claimed by another user. Contact the administrator if you believe this is an error.")
+        
+        self.aware_device_id = retrieved_device_id
+        self.status = 'active'
+        self.save()
+        return (True, "AWARE device confirmed and linked successfully!")
+
+    
+    def fetch_data(self, table_name='battery', limit=100):
+        """Get's the users data from the AWARE server"""
+        if self.status == 'active' and self.aware_device_id:
+            return db_connector.get_aware_data(self.aware_device_id, table_name, limit)
+        return None # Not active or no device ID
+
 
