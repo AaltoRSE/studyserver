@@ -21,26 +21,52 @@ class DataSource(PolymorphicModel):
         """Returns a user-friendly name for the data source type."""
         return "Generic Data Source"
 
+    def get_data_types(self):
+        """Returns a list of available data type names for this source."""
+        raise NotImplementedError("Subclasses must implement this method.")
+    
+    def fetch_data(self):
+        """Fetches and returns data from the source. """
+        raise NotImplementedError("Subclasses must implement this method.")
+
     def __str__(self):
         return f"{self.name} ({self.profile.user.username})"
 
 
 class JsonUrlDataSource(DataSource):
     url = models.URLField(max_length=500, help_text="The URL where the JSON data can be fetched")
+    device_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     @property
     def display_type(self):
         """Returns a user-friendly name for the data source type."""
         return "JSON URL"
+    
+    def get_data_types(self):
+        return ["raw_json"]
 
-    def fetch_data(self):
+    def fetch_data(self, data_type, limit=10000, start_date=None, end_date=None):
         """Fetches and returns the JSON data from the source URL.
         
         No formatting or processing, just returns the string."""
+        if data_type != 'raw_json':
+            return {"error": "Invalid data type requested."}
         try:
             response = requests.get(self.url, timeout=10)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            if not isinstance(result, list):
+                # Response must be a list. Assuming this is a single object, wrap in a list.
+                result = [result]
+            
+            enriched_data = []
+            for row in result:
+                if 'device_id' in row:
+                    row['json_device_id'] = row['device_id']
+                row['device_id'] = str(self.device_id)
+                enriched_data.append(row)
+
+            return enriched_data
         except requests.exceptions.RequestException as e:
             return {"error": f"Could not fetch data from URL: {e}"}
 
@@ -76,12 +102,19 @@ class AwareDataSource(DataSource):
         self.status = 'active'
         self.save()
         return (True, "AWARE device confirmed and linked successfully!")
+    
+    def get_data_types(self):
+        """  Returns a list of available data type names for this source. """
+        if self.status == 'active' and self.aware_device_id:
+            tables = db_connector.get_aware_tables(self.aware_device_id)
+            return tables if tables else []
 
     
-    def fetch_data(self, table_name='battery', limit=100):
+    def fetch_data(self, data_type='battery', limit=10000, start_date=None, end_date=None):
         """Get's the users data from the AWARE server"""
         if self.status == 'active' and self.aware_device_id:
-            return db_connector.get_aware_data(self.aware_device_id, table_name, limit)
-        return None # Not active or no device ID
-
+            return db_connector.get_aware_data(
+                self.aware_device_id, data_type, limit, start_date, end_date
+            )
+        return []
 

@@ -1,0 +1,58 @@
+{% load custom_filters %}
+
+<h1>Data for: {{ source.name }} ({{ source.display_type }})</h1>
+
+<form method="get" style="display: flex; gap: 1rem; align-items: center;">
+    {{ form.as_p }}
+    <button type="submit">Filter</button>
+</form>
+
+<hr>
+
+{% if page_obj %}
+<h3>Displaying page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</h3>
+<table border="1" style="width:100%; border-collapse: collapse;">
+    <thead>
+        <tr>
+            {% for header in headers %}
+                <th>{{ header }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in page_obj.object_list %}
+            <tr>
+                {% for header in headers %}
+                    <td>{{ row|get_item:header }}</td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="pagination">
+    <span class="step-links">
+        {% if page_obj.has_previous %}
+            <a href="?page=1">&laquo; first</a>
+            <a href="?page={{ page_obj.previous_page_number }}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
+        </span>
+
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}">next</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}">last &raquo;</a>
+        {% endif %}
+    </span>
+</div>
+{% elif form.is_valid and form.cleaned_data.data_type %}
+    <p>No data found for the selected filters.</p>
+{% else %}
+    <p>Please select a data type to view data.</p>
+{% endif %}
+
+<a href="{% url 'dashboard' %}">Back to Dashboard</a>
+
+{% load custom_filters %}

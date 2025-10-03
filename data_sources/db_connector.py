@@ -2,7 +2,47 @@ import mysql.connector
 from django.conf import settings
 
 
-def get_aware_data(aware_device_id, table_name='battery', limit=100):
+def get_aware_tables(aware_device_id):
+    """ Gets a list of available tables that have data for the given device_id. """
+    if not aware_device_id:
+        print("Invalid AWARE device ID provided.", aware_device_id)
+        return []
+
+    tables_with_data = []
+    try:
+        database = mysql.connector.connect(
+            host=settings.AWARE_DB_HOST,
+            port=settings.AWARE_DB_PORT,
+            user=settings.AWARE_DB_RO_USER,
+            password=settings.AWARE_DB_RO_PASSWORD,
+            database=settings.AWARE_DB_NAME
+        )
+        cursor = database.cursor()
+
+        cursor.execute("SHOW TABLES")
+        all_tables = [table[0] for table in cursor.fetchall()]
+        for table_name in all_tables:
+            try:
+                query = f"SELECT 1 FROM `{table_name}` WHERE device_id = %s LIMIT 1"
+                cursor.execute(query, (aware_device_id,))
+                if cursor.fetchone():
+                    tables_with_data.append(table_name)
+
+            except mysql.connector.Error:
+                # The table might not have a device_id column, skip it
+                continue
+
+        cursor.close()
+        database.close()
+        return tables_with_data
+
+    except mysql.connector.Error as e:
+        print(f"Error in get_aware_tables: {e}")
+        return []
+
+
+
+def get_aware_data(aware_device_id, table_name='battery', limit=1000, start_date=None, end_date=None):
     """
     Connects to the AWARE DB and fetches the latest records for a specific
     AWARE device ID. Returns a list of dictionaries.
@@ -25,10 +65,21 @@ def get_aware_data(aware_device_id, table_name='battery', limit=100):
         query = (
             f"SELECT * FROM {table_name} "
             "WHERE device_id = %s "
-            "ORDER BY timestamp DESC LIMIT %s"
         )
+        params = [aware_device_id]
+
+        if start_date:
+            query += " AND timestamp >= %s"
+            # AWARE timestamps are in milliseconds (13 digits)
+            params.append(start_date.timestamp() * 1000) 
+        if end_date:
+            query += " AND timestamp <= %s"
+            params.append(end_date.timestamp() * 1000)
         
-        cursor.execute(query, (aware_device_id, limit))
+        query += " ORDER BY timestamp DESC LIMIT %s"
+        params.append(limit)
+        
+        cursor.execute(query, tuple(params))
         results = cursor.fetchall()
 
         cursor.close()

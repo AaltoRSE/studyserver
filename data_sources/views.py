@@ -1,12 +1,13 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, Http404
+from django.core.paginator import Paginator
+from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
 from django.contrib import messages
-from .forms import JsonUrlDataSourceForm, AwareDataSourceForm
+from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
 from .models import DataSource, AwareDataSource
-import json
+from datetime import date, datetime, time
 import qrcode
 import io
 import base64
@@ -77,14 +78,48 @@ def aware_mobile_setup(request, token):
 @login_required
 def view_data_source(request, source_id):
     source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
-    data = source.get_real_instance().fetch_data()
-    pretty_data = json.dumps(data, indent=4)
+    real_instance = source.get_real_instance()
+
+    data_types = real_instance.get_data_types()
+    if request.GET:
+        form = DataFilterForm(request.GET, data_type_choices=data_types)
+    else:
+        initial_data = {'start_date': date.today(), 'end_date': date.today()}
+        form = DataFilterForm(initial=initial_data, data_type_choices=data_types)
+
+
+    headers = []
+    page_obj = None
+    if form.is_valid():
+        selected_type = form.cleaned_data.get('data_type')
+        start_date = form.cleaned_data.get('start_date')
+        end_date = form.cleaned_data.get('end_date')
+
+        if selected_type:
+            start_datetime = datetime.combine(start_date, time.min) if start_date else None
+            end_datetime = datetime.combine(end_date, time.max) if end_date else None
+            all_data = real_instance.fetch_data(
+                data_type=selected_type, 
+                limit=10000,
+                start_date=start_datetime,
+                end_date=end_datetime
+            )
+            print(all_data)
+
+            if all_data:
+                headers = all_data[0].keys()
+                
+                paginator = Paginator(all_data, 100)
+                page_number = request.GET.get('page')
+                page_obj = paginator.get_page(page_number)
 
     context = {
-        'source': source,
-        'pretty_data': pretty_data,
+        'source': real_instance,
+        'form': form,
+        'headers': headers,
+        'page_obj': page_obj,
     }
-    return render(request, 'data_sources/view_source.html', context)
+    return render(request, 'data_sources/data_source_detail.html', context)
 
 
 @login_required
