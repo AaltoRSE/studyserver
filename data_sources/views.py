@@ -1,45 +1,64 @@
+from django.apps import apps
 from django.shortcuts import render, redirect, get_object_or_404
+from django.http import Http404
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
 from django.contrib import messages
+from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
-from .models import DataSource, AwareDataSource
+from .models import DataSource, AwareDataSource, JsonUrlDataSource
 from datetime import date, datetime, time
 import qrcode
 import io
 import base64
 
-@login_required
-def add_json_source(request):
-    if request.method == 'POST':
-        form = JsonUrlDataSourceForm(request.POST)
-        if form.is_valid():
-            new_source = form.save(commit=False)
-            new_source.profile = request.user.profile
-            new_source.save()
-            return redirect('dashboard')
-    else:
-        form = JsonUrlDataSourceForm()
-    
-    return render(request, 'data_sources/add_source_form.html', {'form': form})
+
 
 @login_required
-def add_aware_source(request):
+def select_data_source_type(request):
+    source_types = []
+    all_models = apps.get_app_config('data_sources').get_models()
+    for model in all_models:
+        if model._meta.proxy:
+             continue
+        if issubclass(model, DataSource) and model is not DataSource:
+            type_name = model.__name__.replace('DataSource', '')
+            source_types.append(type_name)
+            
+    return render(request, 'data_sources/select_source_type.html', {'types': source_types})
+
+def add_data_source(request, source_type):
+    try:
+        # Dynamically get the Model and Form classes
+        model_name = f"{source_type}DataSource"
+        form_name = f"{source_type}DataSourceForm"        
+        ModelClass = apps.get_model('data_sources', model_name)
+        FormClass = getattr(forms, form_name)
+
+    except (LookupError, AttributeError):
+        raise Http404(f"Invalid data source type {source_type}")
+    
     if request.method == 'POST':
-        form = AwareDataSourceForm(request.POST)
+        form = FormClass(request.POST)
         if form.is_valid():
             new_source = form.save(commit=False)
             new_source.profile = request.user.profile
+            if isinstance(new_source, JsonUrlDataSource):
+                new_source.status = 'active'
             new_source.save()
-            # Redirect to the instruction page for the newly created source
-            return redirect('aware_instructions', source_id=new_source.id)
+            
+            if isinstance(new_source, AwareDataSource):
+                return redirect('aware_instructions', source_id=new_source.id)
+            
+            return redirect('dashboard')
     else:
-        form = AwareDataSourceForm()
+        form = FormClass()
     
-    return render(request, 'data_sources/add_aware_source.html', {'form': form})
+    title = f"Add {source_type.replace('_', ' ').title()} Source"
+    return render(request, 'data_sources/add_data_source.html', {'form': form, 'title': title})
 
 
 @login_required
@@ -75,51 +94,6 @@ def aware_mobile_setup(request, token):
     }
     return render(request, 'data_sources/aware_mobile_setup.html', context)
 
-@login_required
-def view_data_source(request, source_id):
-    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
-    real_instance = source.get_real_instance()
-
-    data_types = real_instance.get_data_types()
-    if request.GET:
-        form = DataFilterForm(request.GET, data_type_choices=data_types)
-    else:
-        initial_data = {'start_date': date.today(), 'end_date': date.today()}
-        form = DataFilterForm(initial=initial_data, data_type_choices=data_types)
-
-
-    headers = []
-    page_obj = None
-    if form.is_valid():
-        selected_type = form.cleaned_data.get('data_type')
-        start_date = form.cleaned_data.get('start_date')
-        end_date = form.cleaned_data.get('end_date')
-
-        if selected_type:
-            start_datetime = datetime.combine(start_date, time.min) if start_date else None
-            end_datetime = datetime.combine(end_date, time.max) if end_date else None
-            all_data = real_instance.fetch_data(
-                data_type=selected_type, 
-                limit=10000,
-                start_date=start_datetime,
-                end_date=end_datetime
-            )
-            print(all_data)
-
-            if all_data:
-                headers = all_data[0].keys()
-                
-                paginator = Paginator(all_data, 100)
-                page_number = request.GET.get('page')
-                page_obj = paginator.get_page(page_number)
-
-    context = {
-        'source': real_instance,
-        'form': form,
-        'headers': headers,
-        'page_obj': page_obj,
-    }
-    return render(request, 'data_sources/data_source_detail.html', context)
 
 
 @login_required
@@ -171,3 +145,76 @@ def aware_config_api(request, token):
     return JsonResponse(config_json)
 
 
+@login_required
+def view_data_source(request, source_id):
+    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    real_instance = source.get_real_instance()
+
+    data_types = real_instance.get_data_types()
+    if request.GET:
+        form = DataFilterForm(request.GET, data_type_choices=data_types)
+    else:
+        initial_data = {'start_date': date.today(), 'end_date': date.today()}
+        form = DataFilterForm(initial=initial_data, data_type_choices=data_types)
+
+    headers = []
+    page_obj = None
+    if form.is_valid():
+        selected_type = form.cleaned_data.get('data_type')
+        start_date = form.cleaned_data.get('start_date')
+        end_date = form.cleaned_data.get('end_date')
+
+        if selected_type:
+            start_datetime = datetime.combine(start_date, time.min) if start_date else None
+            end_datetime = datetime.combine(end_date, time.max) if end_date else None
+            all_data = real_instance.fetch_data(
+                data_type=selected_type, 
+                limit=10000,
+                start_date=start_datetime,
+                end_date=end_datetime
+            )
+
+            if all_data:
+                headers = all_data[0].keys()
+                
+                paginator = Paginator(all_data, 100)
+                page_number = request.GET.get('page')
+                page_obj = paginator.get_page(page_number)
+
+    context = {
+        'source': real_instance,
+        'form': form,
+        'headers': headers,
+        'page_obj': page_obj,
+    }
+    return render(request, 'data_sources/data_source_detail.html', context)
+
+
+@login_required
+def edit_data_source(request, source_id):
+    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    real_instance = source.get_real_instance()
+
+    # Select the correct form based on the model's class
+    if isinstance(real_instance, AwareDataSource):
+        FormClass = AwareDataSourceForm
+    elif isinstance(real_instance, JsonUrlDataSource):
+        FormClass = JsonUrlDataSourceForm
+    else:
+        messages.error(request, "This data source type cannot be edited.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        form = FormClass(request.POST, instance=real_instance)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Successfully updated '{real_instance.name}'.")
+            return redirect('dashboard')
+    else:
+        form = FormClass(instance=real_instance)
+
+    return render(
+        request, 
+        'data_sources/add_data_source.html', 
+        {'form': form, 'title': f'Edit "{real_instance.name}"'}
+    )

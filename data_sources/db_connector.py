@@ -2,10 +2,10 @@ import mysql.connector
 from django.conf import settings
 
 
-def get_aware_tables(aware_device_id):
+def get_aware_tables(device_id):
     """ Gets a list of available tables that have data for the given device_id. """
-    if not aware_device_id:
-        print("Invalid AWARE device ID provided.", aware_device_id)
+    if not device_id:
+        print("Invalid AWARE device ID provided.", device_id)
         return []
 
     tables_with_data = []
@@ -24,7 +24,7 @@ def get_aware_tables(aware_device_id):
         for table_name in all_tables:
             try:
                 query = f"SELECT 1 FROM `{table_name}` WHERE device_id = %s LIMIT 1"
-                cursor.execute(query, (aware_device_id,))
+                cursor.execute(query, (device_id,))
                 if cursor.fetchone():
                     tables_with_data.append(table_name)
 
@@ -42,13 +42,13 @@ def get_aware_tables(aware_device_id):
 
 
 
-def get_aware_data(aware_device_id, table_name='battery', limit=1000, start_date=None, end_date=None):
+def get_aware_data(device_id, table_name='battery', limit=1000, start_date=None, end_date=None):
     """
     Connects to the AWARE DB and fetches the latest records for a specific
     AWARE device ID. Returns a list of dictionaries.
     """
-    if not aware_device_id:
-        print("Invalid AWARE device ID provided.", aware_device_id)
+    if not device_id:
+        print("Invalid AWARE device ID provided.", device_id)
         return []
 
     try:
@@ -66,7 +66,7 @@ def get_aware_data(aware_device_id, table_name='battery', limit=1000, start_date
             f"SELECT * FROM {table_name} "
             "WHERE device_id = %s "
         )
-        params = [aware_device_id]
+        params = [device_id]
 
         if start_date:
             query += " AND timestamp >= %s"
@@ -89,9 +89,9 @@ def get_aware_data(aware_device_id, table_name='battery', limit=1000, start_date
 
     except mysql.connector.Error as e:
         print(f"Error connecting to Aware database: {e}")
-        return None
+        return []
 
-def get_aware_device_id_for_label(device_label):
+def get_device_id_for_label(device_label):
     """Finds the device_id from the 'aware_device' table using the label."""
     try:
         db_connection = mysql.connector.connect(
@@ -112,8 +112,8 @@ def get_aware_device_id_for_label(device_label):
 
         if device_row:
             return device_row['device_id']
-        return None
+        return []
 
     except mysql.connector.Error as e:
-        print(f"Error in get_aware_device_id_for_label: {e}")
-        return None
+        print(f"Error in get_device_id_for_label: {e}")
+        return []

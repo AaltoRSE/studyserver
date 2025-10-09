@@ -5,20 +5,19 @@
 <ul>
 {% for source in user.profile.data_sources.all %}
 <li>
-    <a href="{% url 'view_data_source' source.id %}">{{ source.name }}</a> 
-    ({{ source.display_type }})
+    <strong>{{ source.name }}</strong> ({{ source.display_type }})
 
-    {% if source.model_name == 'AwareDataSource' and source.status == 'pending' %}
-        - <em>Pending Confirmation</em> 
-        <a href="{% url 'confirm_aware_source' source.id %}">(Confirm Connection)</a>
+    {% if source.status == 'active' %}
+        <a href="{% url 'view_data_source' source.id %}">(View Data)</a>
     {% endif %}
+
+    <a href="{% url 'edit_data_source' source.id %}">(Edit)</a>
 </li>
 {% empty %}
     <li>You have not added any data sources yet.</li>
 {% endfor %}
 </ul>
 
-<a href="{% url 'add_json_source' %}">Add a new JSON URL Source</a><br>
-<a href="{% url 'add_aware_source' %}">Add a new AWARE Mobile Source</a>
+<a href="{% url 'select_data_source_type' %}">Add a new Data Source</a><br>
 
 <p><a href="{% url 'logout' %}">Logout</a></p>

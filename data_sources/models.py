@@ -7,9 +7,15 @@ from . import db_connector
 
 
 class DataSource(PolymorphicModel):
+    STATUS_CHOICES = (
+        ("pending", "Pending Confirmation"),
+        ("active", "Active"),
+    )
     profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='data_sources')
+    device_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=100, help_text="A personal name for this source")
     date_added = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 
     @property
     def model_name(self):
@@ -35,7 +41,6 @@ class DataSource(PolymorphicModel):
 
 class JsonUrlDataSource(DataSource):
     url = models.URLField(max_length=500, help_text="The URL where the JSON data can be fetched")
-    device_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     @property
     def display_type(self):
@@ -72,13 +77,7 @@ class JsonUrlDataSource(DataSource):
 
 
 class AwareDataSource(DataSource):
-    STATUS_CHOICES = (
-        ("pending", "Pending Confirmation"),
-        ("active", "Active"),
-    )
     device_label = models.CharField(max_length=150, unique=True, default=uuid.uuid4)
-    aware_device_id = models.CharField(max_length=150, unique=True, blank=True, null=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
 
     @property
@@ -94,27 +93,30 @@ class AwareDataSource(DataSource):
         if not retrieved_device_id:
             return (False, "No data with that device label. It may take a few hours for data to appear. Please ensure AWARE is running on your device.") 
 
-        is_claimed = AwareDataSource.objects.filter(aware_device_id=retrieved_device_id).exclude(id=self.id).exists()
+        is_claimed = AwareDataSource.objects.filter(device_id=retrieved_device_id).exclude(id=self.id).exists()
         if is_claimed:
             return (False, "Error: This device ID has already been claimed by another user. Contact the administrator if you believe this is an error.")
         
-        self.aware_device_id = retrieved_device_id
+        self.device_id = retrieved_device_id
         self.status = 'active'
         self.save()
         return (True, "AWARE device confirmed and linked successfully!")
     
     def get_data_types(self):
         """  Returns a list of available data type names for this source. """
-        if self.status == 'active' and self.aware_device_id:
-            tables = db_connector.get_aware_tables(self.aware_device_id)
+        if self.status == 'active' and self.device_id:
+            device_id_str = str(self.device_id)
+            tables = db_connector.get_aware_tables(device_id_str)
             return tables if tables else []
+        return []
 
     
     def fetch_data(self, data_type='battery', limit=10000, start_date=None, end_date=None):
         """Get's the users data from the AWARE server"""
-        if self.status == 'active' and self.aware_device_id:
+        if self.status == 'active' and self.device_id:
+            device_id_str = str(self.device_id)
             return db_connector.get_aware_data(
-                self.aware_device_id, data_type, limit, start_date, end_date
+                device_id_str, data_type, limit, start_date, end_date
             )
         return []
 

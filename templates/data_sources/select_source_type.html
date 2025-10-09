@@ -1,0 +1,7 @@
+<h1>Add a New Data Source</h1>
+<p>Please select the type of data source you would like to add:</p>
+<ul>
+    {% for type in types %}
+        <li><a href="{% url 'add_data_source' type %}">{{ type|title }}</a></li>
+    {% endfor %}
+</ul>
