@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'polymorphic',
     'users',
     'data_sources',
+    'studies',
 ]
 
 MIDDLEWARE = [

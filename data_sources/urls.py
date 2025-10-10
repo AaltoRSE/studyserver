@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     path('add/', views.select_data_source_type, name='select_data_source_type'),
     path('add/<str:source_type>/', views.add_data_source, name='add_data_source'),
+    path('<int:source_id>/delete/', views.delete_data_source, name='delete_data_source'),
     path('<int:source_id>/', views.view_data_source, name='view_data_source'),
     path('instructions/aware/<int:source_id>/', views.aware_instructions, name='aware_instructions'),
     path('confirm/aware/<int:source_id>/', views.confirm_aware_source, name='confirm_aware_source'),

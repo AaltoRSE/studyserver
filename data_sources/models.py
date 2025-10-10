@@ -88,7 +88,7 @@ class AwareDataSource(DataSource):
         if self.status == 'active':
             return (True, "This device is already active.")
 
-        retrieved_device_id = db_connector.get_aware_device_id_for_label(self.device_label)
+        retrieved_device_id = db_connector.get_device_id_for_label(self.device_label)
 
         if not retrieved_device_id:
             return (False, "No data with that device label. It may take a few hours for data to appear. Please ensure AWARE is running on your device.") 

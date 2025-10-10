@@ -2,6 +2,7 @@ from django.apps import apps
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import Http404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.urls import reverse
@@ -34,7 +35,7 @@ def add_data_source(request, source_type):
     try:
         # Dynamically get the Model and Form classes
         model_name = f"{source_type}DataSource"
-        form_name = f"{source_type}DataSourceForm"        
+        form_name = f"{source_type}DataSourceForm"
         ModelClass = apps.get_model('data_sources', model_name)
         FormClass = getattr(forms, form_name)
 
@@ -59,6 +60,15 @@ def add_data_source(request, source_type):
     
     title = f"Add {source_type.replace('_', ' ').title()} Source"
     return render(request, 'data_sources/add_data_source.html', {'form': form, 'title': title})
+
+@require_POST
+@login_required
+def delete_data_source(request, source_id):
+    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    source_name = source.name
+    source.delete()
+    messages.success(request, f"Successfully deleted data source: {source_name}")
+    return redirect('dashboard')
 
 
 @login_required
