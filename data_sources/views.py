@@ -172,7 +172,7 @@ def aware_config_api(request, token):
             config_json['schedules'].extend(study_config.get('schedules', []))
             config_json['sensors'].extend(study_config.get('sensors', []))
         except requests.exceptions.RequestException:
-            messages.error(request, f"Failed to retrieve study configuration for {study.title}.")
+            print(f"ERROR: Failed to retrieve study config for {study.title}. URL: {full_config_url}")
             continue
             
     return JsonResponse(config_json)
