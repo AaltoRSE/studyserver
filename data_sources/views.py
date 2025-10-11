@@ -11,11 +11,12 @@ from django.contrib import messages
 from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
 from .models import DataSource, AwareDataSource, JsonUrlDataSource
+from studies.models import Consent
 from datetime import date, datetime, time
 import qrcode
 import io
 import base64
-
+import requests
 
 
 @login_required
@@ -120,9 +121,19 @@ def confirm_aware_source(request, source_id):
 
 
 def aware_config_api(request, token):
+    source = get_object_or_404(AwareDataSource, config_token=token)
+    aware_data_source = source.get_real_instance()
+
+    active_consents = Consent.objects.filter(
+        participant=source.profile,
+        is_complete=True,
+        revocation_date__isnull=True
+    )
+
+    studies = [consent.study for consent in active_consents]
     config_json = {
-        "_id": "",
-        "device_label": "test_label",
+        "_id": "Aalto RSE studypage",
+        "device_label": aware_data_source.device_label,
         "study_info": {
             "study_title": "Polalpha",
             "study_description": "Alpha study for POLWELL and POLEMIC",
@@ -145,13 +156,25 @@ def aware_config_api(request, token):
         "updatedAt": "2025-09-25T12:30:13.411Z",
         "questions": [],
         "schedules": [],
-        "sensors": [
-            {
-                "setting": "location",
-                "value": True
-            },
-        ]
+        "sensors": []
     }
+    for study in studies:
+        config_filename = study.source_configurations.get('AwareDataSource')
+        if not config_filename or not study.page_url:
+            continue
+        base_url = study.page_url.rsplit('/', 1)[0]
+        full_config_url = f"{base_url}/{config_filename}"
+        try:
+            response = requests.get(full_config_url, timeout=5)
+            response.raise_for_status()
+            study_config = response.json()
+            config_json['questions'].extend(study_config.get('questions', []))
+            config_json['schedules'].extend(study_config.get('schedules', []))
+            config_json['sensors'].extend(study_config.get('sensors', []))
+        except requests.exceptions.RequestException:
+            messages.error(request, f"Failed to retrieve study configuration for {study.title}.")
+            continue
+            
     return JsonResponse(config_json)
 
 
