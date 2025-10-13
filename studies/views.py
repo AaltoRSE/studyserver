@@ -11,26 +11,24 @@ def join_study(request, study_id):
     study = get_object_or_404(Study, pk=study_id)
     profile = request.user.profile
 
-    consent, created = Consent.objects.get_or_create(
-        participant=profile,
-        study=study
-    )
-    
-    required_sources = study.required_data_sources
-    user_sources = [source.model_name for source in profile.data_sources.all()]
-    
-    missing_sources = [
-        source_type for source_type in required_sources if source_type not in user_sources
-    ]
+    for required_type in study.required_data_sources:
+        Consent.objects.get_or_create(
+            participant=profile,
+            study=study,
+            source_type=required_type,
+        )
 
-    if not missing_sources:
-        consent.is_complete = True
-        consent.save()
-        messages.success(request, f"You have successfully joined '{study.title}'.")
-        return redirect('dashboard')
-    else:
-        next_source_to_add = missing_sources[0].replace('DataSource', '')
-        return redirect('add_data_source', source_type=next_source_to_add)
+    for optional_type in study.optional_data_sources:
+        Consent.objects.get_or_create(
+            participant=profile,
+            study=study,
+            source_type=optional_type,
+            is_optional=True
+        )
+        
+    messages.info(request, f"You have started the enrollment process for '{study.title}'. Please complete the required steps.")
+    return redirect('dashboard')
+
 
 def study_detail(request, study_id):
     study = get_object_or_404(Study, pk=study_id)
@@ -41,5 +39,6 @@ def study_detail(request, study_id):
     context = {
         'study': study,
         'request': request,
+        'user': request.user,
     }
     return render(request, 'studies/study_detail_wrapper.html', {'study_page_content': template.render(context)})
