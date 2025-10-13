@@ -22,7 +22,20 @@ class Study(models.Model):
         help_text="List of optional source types, e.g., ['JsonUrlDataSource']"
     )
     config_url = models.URLField(max_length=500, help_text="URL for fetching study configuration")
-    
+
+    @property
+    def raw_content_base_url(self):
+        """ Convert a repo URL to its raw content base URL for some known services. """
+        if not self.config_url:
+            return None
+        if 'github.com' in self.config_url:
+            return self.config_url.replace('github.com', 'raw.githubusercontent.com') + '/main/'
+        if 'gitlab.com' in self.config_url:
+            return f"{self.config_url}/-/raw/{self.repo_branch}/"
+
+        # raw urls also should work directly
+        return self.config_url
+
     def __str__(self):
         return self.title
 
