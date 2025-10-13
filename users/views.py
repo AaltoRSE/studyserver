@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
+
+from users.models import Profile
 from .forms import CustomUserCreationForm
 from studies.models import Consent
 
@@ -7,10 +9,32 @@ def signup(request):
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
-            form.save()
+            user = form.save(commit=False)
+            user.save()
+            Profile.objects.create(
+                user=user,
+                user_type='participant'
+            )
             return redirect('login')
     else:
         form = CustomUserCreationForm()
+    return render(request, 'registration/signup.html', {'form': form})
+
+def signup_researcher(request):
+    if request.method == 'POST':
+        form = CustomUserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save(commit=False)
+            user.save()
+            
+            Profile.objects.create(
+                user=user,
+                user_type='researcher'
+            )
+            return redirect('login')
+    else:
+        form = CustomUserCreationForm()
+        
     return render(request, 'registration/signup.html', {'form': form})
 
 def home(request):
