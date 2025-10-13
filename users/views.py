@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import Group
 
 from users.models import Profile
 from .forms import CustomUserCreationForm
@@ -25,8 +26,12 @@ def signup_researcher(request):
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
             user = form.save(commit=False)
+            user.is_staff = True
             user.save()
             
+            researcher_group = Group.objects.get(name='Researchers')
+            user.groups.add(researcher_group)
+
             Profile.objects.create(
                 user=user,
                 user_type='researcher'

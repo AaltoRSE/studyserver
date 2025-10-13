@@ -11,10 +11,15 @@ class Study(models.Model):
         related_name='studies',
         limit_choices_to={'user_type': 'researcher'},
     )
-    required_data_sources = models.JSONField(default=list, help_text="List of required data source types")
-    source_configurations = models.JSONField(
-        default=dict,
-        help_text="Maps source types to config filenames, e.g., {'AwareDataSource': 'aware_config.json'}"
+    required_data_sources = models.JSONField(
+        default=list, 
+        blank=True,
+        help_text="List of required source types, e.g., ['AwareDataSource']"
+    )
+    optional_data_sources = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of optional source types, e.g., ['JsonUrlDataSource']"
     )
     config_url = models.URLField(max_length=500, help_text="URL for fetching study configuration")
     
