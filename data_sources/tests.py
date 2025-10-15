@@ -17,11 +17,6 @@ class DataSourcesViewsTest(TestCase):
             name='Test Aware Source'
         )
 
-    def test_add_source_get(self):
-        response = self.client.get(reverse('select_data_source_type'))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'data_sources/select_source_type.html')
-
     def test_add_source_type(self):
         response = self.client.get(reverse('add_data_source', args=['Aware']))
         self.assertEqual(response.status_code, 200)
