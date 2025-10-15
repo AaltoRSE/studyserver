@@ -59,4 +59,3 @@ def dashboard(request):
         'past_consents': past_consents,
     }
     return render(request, 'dashboard.html', context)
-    return render(request, 'dashboard.html')

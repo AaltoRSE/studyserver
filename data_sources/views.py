@@ -55,7 +55,7 @@ def add_data_source(request, source_type):
         if form.is_valid():
             new_source = form.save(commit=False)
             new_source.profile = request.user.profile
-            if isinstance(new_source, JsonUrlDataSource):
+            if not new_source.requires_setup and not new_source.requires_confirmation:
                 new_source.status = 'active'
             new_source.save()
 
@@ -70,8 +70,8 @@ def add_data_source(request, source_type):
                     consent.is_complete = True
                     consent.save()
             
-            if isinstance(new_source, AwareDataSource):
-                base_url = reverse('aware_instructions', args=[new_source.id])
+            if new_source.requires_setup:
+                base_url = new_source.get_setup_url(request)
                 query_params = urlencode({'consent_id': consent.id})
                 return redirect(f'{base_url}?{query_params}')
             else:

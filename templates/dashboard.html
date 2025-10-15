@@ -13,8 +13,8 @@
     {% if source.status == 'active' %}
         <a href="{% url 'view_data_source' source.id %}">(View Data)</a>
     {% endif %}
-    {% if source.status == 'pending' and source.model_name == 'AwareDataSource' %}
-        <a href="{% url 'confirm_aware_source' source.id %}">(Check for Data)</a>
+    {% if source.status == 'pending' and source.get_confirm_url %}
+        <a href="{{ source.get_confirm_url }}">(Check for Data)</a>
     {% endif %}
 
     <a href="{% url 'edit_data_source' source.id %}">(Edit)</a>

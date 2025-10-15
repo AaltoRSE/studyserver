@@ -1,6 +1,7 @@
 import requests
 import uuid
 from django.db import models
+from django.urls import reverse
 from polymorphic.models import PolymorphicModel
 from users.models import Profile
 from . import db_connector
@@ -16,6 +17,9 @@ class DataSource(PolymorphicModel):
     name = models.CharField(max_length=100, help_text="A personal name for this source")
     date_added = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    requires_confirmation = False
+    requires_setup = False
 
     @property
     def model_name(self):
@@ -26,6 +30,10 @@ class DataSource(PolymorphicModel):
     def display_type(self):
         """Returns a user-friendly name for the data source type."""
         return "Generic Data Source"
+    
+    def get_confirm_url(self):
+        print("Getting confirm URL")
+        return None
 
     def get_data_types(self):
         """Returns a list of available data type names for this source."""
@@ -79,6 +87,19 @@ class JsonUrlDataSource(DataSource):
 class AwareDataSource(DataSource):
     device_label = models.CharField(max_length=150, unique=True, default=uuid.uuid4)
     config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+
+    requires_setup = True
+    requires_confirmation = True
+
+    def get_setup_url(self):
+        base_url = reverse('aware_instructions', args=[self.config_token])
+        return base_url
+    
+    def get_confirm_url(self):
+        print("Getting confirm URL")
+        base_url = reverse('confirm_aware_source', args=[self.id])
+        print("Confirm URL:", base_url)
+        return base_url
 
     @property
     def display_type(self):
