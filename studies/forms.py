@@ -46,3 +46,18 @@ class StudyAdminForm(forms.ModelForm):
                     "You cannot remove yourself from the list of researchers."
                 )
             return cleaned_data
+        
+
+class ConsentAcceptanceForm(forms.Form):
+    accept_consent = forms.BooleanField(required=True, label="I consent")
+
+
+class DataSourceSelectionForm(forms.Form):
+    source_id = forms.ChoiceField(choices=[], required=False, label="Select existing source")
+        
+    def __init__(self, *args, available_sources=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if available_sources:
+            self.fields['source_id'].choices = [('', '-- Select a source --')] + [
+                (source.id, source.name) for source in available_sources
+            ]

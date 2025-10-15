@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% autoescape off %}
+    {{ content }}
+{% endautoescape %}
+{% endblock %}
+
+{% if scroll_to %}
+<script>
+    document.getElementById('{{ scroll_to }}').scrollIntoView({ behavior: 'smooth' });
+</script>
+{% endif %}

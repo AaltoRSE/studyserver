@@ -1,4 +1,7 @@
+{% extends 'base.html' %}
 {% load custom_filters %}
+
+{% block content %}
 
 <h1>Data for: {{ source.name }} ({{ source.display_type }})</h1>
 
@@ -54,5 +57,6 @@
 {% endif %}
 
 <a href="{% url 'dashboard' %}">Back to Dashboard</a>
+{% endblock %}
 
 {% load custom_filters %}

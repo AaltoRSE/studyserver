@@ -58,6 +58,7 @@ class Consent(models.Model):
     source_type = models.CharField(max_length=100)
     is_optional = models.BooleanField(default=False)
     is_complete = models.BooleanField(default=False)
+    consent_text_accepted = models.BooleanField(default=False)
     consent_date = models.DateTimeField(auto_now_add=True)
     revocation_date = models.DateTimeField(null=True, blank=True)
     

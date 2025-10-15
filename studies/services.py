@@ -1,5 +1,9 @@
+import os
 import requests
 from django.core.cache import cache
+from django.template.loader import render_to_string
+from django.conf import settings
+
 
 def get_study_page_html(repo_url):
     if not repo_url:
@@ -19,3 +23,30 @@ def get_study_page_html(repo_url):
         return html_content
     except requests.RequestException as e:
         return f"<h2>Error fetching study page: {e}</h2>"
+
+
+def _get_default_consent_template():
+    template_path = os.path.join(settings.BASE_DIR, 'templates/studies/consent_default.html')
+    with open(template_path, 'r') as f:
+        return f.read()
+
+def get_consent_template(study, source_type):
+    if not study.raw_content_base_url:
+        return _get_default_consent_template()
+    
+    template_url = f"{study.raw_content_base_url}/consent_{source_type.lower()}.html"
+
+    cache_key = f'consent_template_{study.id}_{source_type}'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    
+    try:
+        response = requests.get(template_url, timeout=5)
+        response.raise_for_status()
+        template = response.text
+        cache.set(cache_key, template, 300)
+        return template
+    except requests.RequestException:
+        return _get_default_consent_template()
+

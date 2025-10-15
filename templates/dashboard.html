@@ -1,3 +1,6 @@
+{% extends 'base.html' %}
+
+{% block content %}
 <h1>Your Dashboard</h1>
 <p>Hello, {{ user.username }}!</p>
 
@@ -9,6 +12,9 @@
 
     {% if source.status == 'active' %}
         <a href="{% url 'view_data_source' source.id %}">(View Data)</a>
+    {% endif %}
+    {% if source.status == 'pending' and source.model_name == 'AwareDataSource' %}
+        <a href="{% url 'confirm_aware_source' source.id %}">(Check for Data)</a>
     {% endif %}
 
     <a href="{% url 'edit_data_source' source.id %}">(Edit)</a>
@@ -44,7 +50,7 @@
         {% for consent in incomplete_consents %}
             <li>
                 You have not finished signing up for "{{ consent.study.title }}".
-                <a href="{% url 'join_study' consent.study.id %}">Continue Setup</a>
+                <a href="{% url 'consent_workflow' consent.study.id %}">Continue Setup</a>
             </li>
         {% endfor %}
     </ul>
@@ -65,3 +71,4 @@
 
 
 <p><a href="{% url 'logout' %}">Logout</a></p>
+{% endblock %}

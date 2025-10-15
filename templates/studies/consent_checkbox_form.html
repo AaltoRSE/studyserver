@@ -1,12 +1,9 @@
 {% extends 'base.html' %}
 
 {% block content %}
-
-<h1>Add a new data source</h1>
 <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit">Save Data Source</button>
+    <button type="submit">Continue</button>
 </form>
-
 {% endblock %}

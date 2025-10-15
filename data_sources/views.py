@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
 from django.contrib import messages
+from urllib.parse import urlencode
 from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
 from .models import DataSource, AwareDataSource, JsonUrlDataSource
@@ -33,6 +34,12 @@ def select_data_source_type(request):
     return render(request, 'data_sources/select_source_type.html', {'types': source_types})
 
 def add_data_source(request, source_type):
+    consent_id = request.GET.get('consent_id')
+    if consent_id:
+        query_params = f'?consent_id={consent_id}'
+    else:
+        query_params = ''
+
     try:
         # Dynamically get the Model and Form classes
         model_name = f"{source_type}DataSource"
@@ -51,11 +58,29 @@ def add_data_source(request, source_type):
             if isinstance(new_source, JsonUrlDataSource):
                 new_source.status = 'active'
             new_source.save()
+
+            # Link to consent if coming from consent workflow
+            if consent_id:
+                consent = Consent.objects.filter(
+                    id=consent_id, 
+                    participant=request.user.profile
+                ).first()
+                if consent:
+                    consent.data_source = new_source
+                    consent.is_complete = True
+                    consent.save()
             
             if isinstance(new_source, AwareDataSource):
-                return redirect('aware_instructions', source_id=new_source.id)
-            
-            return redirect('dashboard')
+                base_url = reverse('aware_instructions', args=[new_source.id])
+                query_params = urlencode({'consent_id': consent.id})
+                return redirect(f'{base_url}?{query_params}')
+            else:
+                messages.success(request, f"Successfully added data source: {new_source.name}")
+                if consent_id:
+                    return redirect('consent_workflow', study_id=consent.study.id)
+                else:
+                    return redirect('dashboard')
+
     else:
         form = FormClass()
     
@@ -84,10 +109,23 @@ def aware_instructions(request, source_id):
     qr_img.save(buffer, format='PNG')
     qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
+    consent_id = request.GET.get('consent_id')
+    study_id = None
+    if consent_id:
+        consent = Consent.objects.filter(
+            id=consent_id, 
+            participant=request.user.profile
+        ).first()
+        if consent:
+            study_id = consent.study.id
+        else:
+            study_id = None
+
     context = {
         'source': source,
         'qr_code_image': qr_b64,
         'qr_link': mobile_setup_url,
+        'study_id': study_id
     }
     return render(request, 'data_sources/aware_instructions.html', context)
 
@@ -114,7 +152,7 @@ def confirm_aware_source(request, source_id):
 
     if not success:
         messages.error(request, message)
-        return redirect('aware_instructions', source_id=source.id)
+        return redirect('dashboard')
     
     messages.success(request, message)
     return redirect('dashboard')

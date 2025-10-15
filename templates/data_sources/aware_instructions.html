@@ -1,3 +1,7 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
 <h1>Add an AWARE Data Source</h1>
 <p>Follow these steps to connect your phone:</p>
 
@@ -14,5 +18,12 @@
 <a href="{{ qr_link }}">link</a> 
 
 <br>
+
+{% if study_id %}
+    <a href="{% url 'consent_workflow' study_id %}">Back to Join Study</a>
+    <br>
+{% endif %}
+
 <a href="{% url 'dashboard' %}">Back to Dashboard</a>
 
+{% endblock %}
