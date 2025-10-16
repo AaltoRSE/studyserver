@@ -6,7 +6,11 @@ venv/
 # Django
 *.log
 db.sqlite3
+
+# local_settings
 .env
+study_server/local_settings.py
 
 # IDEs
 .vscode/
+
