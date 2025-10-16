@@ -57,7 +57,7 @@ class DataSourcesViewsTest(TestCase):
         )
         response = self.client.get(reverse('aware_instructions', args=[source.id]))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'data_sources/aware_instructions.html')
+        self.assertTemplateUsed(response, 'data_sources/aware/instructions.html')
         self.assertIn('qr_code_image', response.context)
         
     def test_aware_instructions_view_invalid_source(self):
@@ -80,7 +80,7 @@ class DataSourcesViewsTest(TestCase):
         )
         response = self.client.get(reverse('aware_mobile_setup', args=[source.config_token]))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'data_sources/aware_mobile_setup.html')
+        self.assertTemplateUsed(response, 'data_sources/aware/mobile_setup.html')
         self.assertIn('source', response.context)
         
 

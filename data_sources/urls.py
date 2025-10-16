@@ -1,4 +1,5 @@
 from django.urls import path
+from django.urls import path, include
 from . import views
 
 urlpatterns = [
@@ -6,9 +7,7 @@ urlpatterns = [
     path('add/<str:source_type>/', views.add_data_source, name='add_data_source'),
     path('<int:source_id>/delete/', views.delete_data_source, name='delete_data_source'),
     path('<int:source_id>/', views.view_data_source, name='view_data_source'),
-    path('instructions/aware/<int:source_id>/', views.aware_instructions, name='aware_instructions'),
-    path('confirm/aware/<int:source_id>/', views.confirm_aware_source, name='confirm_aware_source'),
-    path('aware_config/<uuid:token>/', views.aware_config_api, name='aware_config_api'),
-    path('setup/aware/<uuid:token>/', views.aware_mobile_setup, name='aware_mobile_setup'),
     path('<int:source_id>/edit/', views.edit_data_source, name='edit_data_source'),
+
+    path('aware/', include('data_sources.urls_aware')),
 ]
