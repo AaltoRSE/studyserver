@@ -1,9 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.template import engines
 from django.contrib import messages
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
+from django.http import JsonResponse
 from django.urls import reverse
 from urllib.parse import urlencode
 
@@ -132,3 +134,31 @@ def consent_workflow(request, study_id):
         'content': rendered,
         'scroll_to': 'consent-form'
     })
+
+
+@staff_member_required
+def download_consent_data(request, consent_id):
+    consent = get_object_or_404(Consent, id=consent_id)
+    if not request.user.is_superuser:
+        if not consent.study.researchers.filter(user=request.user).exists():
+            return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    if not consent.data_source or consent.data_source.status != 'active':
+        return JsonResponse({'error': 'Data source not active'}, status=400)
+    
+    source = consent.data_source.get_real_instance()
+    data_type = request.GET.get('data_type')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    # return a list of available data types if none specified
+    if not data_type:
+        return JsonResponse({'available_data_types': source.get_data_types()})
+
+    data = source.fetch_data(
+        data_type=data_type,
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    return JsonResponse({'response': 'Not implemented yet'})
