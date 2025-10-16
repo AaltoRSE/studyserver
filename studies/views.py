@@ -1,3 +1,4 @@
+import csv
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
@@ -5,9 +6,13 @@ from django.template import engines
 from django.contrib import messages
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
-from django.http import JsonResponse
 from django.urls import reverse
 from urllib.parse import urlencode
+from django.http import JsonResponse, HttpResponse
+
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 from .models import Study, Consent
 from .forms import ConsentAcceptanceForm, DataSourceSelectionForm
@@ -161,4 +166,71 @@ def download_consent_data(request, consent_id):
         end_date=end_date
     )
 
-    return JsonResponse({'response': 'Not implemented yet'})
+    return JsonResponse({'data': data, 'count': len(data)})
+
+
+@api_view(['GET'])
+@authentication_classes([TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def study_data_api(request, study_id):
+    study = get_object_or_404(Study, id=study_id)
+
+    if not request.user.is_superuser:
+        if not study.researchers.filter(user=request.user).exists():
+            return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    data_type = request.GET.get('data_type')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    output_format = request.GET.get('format', 'json')
+
+    active_consents = Consent.objects.filter(
+        study=study,
+        is_complete=True,
+        revocation_date__isnull=True,
+        data_source__status='active'
+    ).select_related('data_source')
+
+    all_data = []
+    all_data_types = set()
+    for consent in active_consents:
+        if not consent.data_source:
+            continue
+        source = consent.data_source.get_real_instance()
+        data_types = source.get_data_types()
+        all_data_types.update(data_types)
+        if data_type:
+            data_types = [data_type] if data_type in data_types else []
+        for dt in data_types:
+            data = source.fetch_data(
+                data_type=dt,
+                start_date=start_date,
+                end_date=end_date
+            )
+            for row in data:
+                row["data_type"] = dt
+                row["source_type"] = consent.source_type
+            all_data.extend(data)
+    
+    if output_format == 'csv':
+        return _data_to_csv_response(all_data, "study_data.csv")
+    else:
+        return JsonResponse({
+            'study': study.title,
+            'data_count': len(all_data),
+            'data_types': list(all_data_types),
+            'data': all_data
+        })
+    
+def _data_to_csv_response(data, filename):
+    if not data:
+        return HttpResponse("No data available", content_type='text/plain')
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.DictWriter(response, fieldnames=data[0].keys())
+    writer.writeheader()
+    writer.writerows(data)
+
+    return response

@@ -54,14 +54,12 @@ class ConsentInline(admin.TabularInline):
         'is_complete',
         'consent_date',
         'revocation_date',
-        'data_actions'
     )
     fields = (
         'participant_username',
         'source_type',
         'data_source_info',
         'is_complete',
-        'data_actions'
     )
     can_delete = False
     extra = 0
@@ -81,17 +79,6 @@ class ConsentInline(admin.TabularInline):
             status_color,
             source.name,
             source.status
-        )
-    
-    @admin.display(description='Actions')
-    def data_actions(self, obj):
-        if not obj.data_source or obj.data_source.status != 'active':
-            return "-"
-        
-        download_url = reverse('admin_download_consent_data', args=[obj.id])
-        return format_html(
-            '<a href="{}">Download Data</a>',
-            download_url
         )
 
     def has_add_permission(self, request, obj=None):
