@@ -5,4 +5,6 @@ urlpatterns = [
     path('signup/', views.signup, name='signup'),
     path('signup/researcher/', views.signup_researcher, name='signup_researcher'),
     path('dashboard/', views.dashboard, name='dashboard'),
+    path('token/', views.manage_token, name='manage_token'),
+    path('api/data/', views.my_data_api, name='my_data_api'),
 ]

@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Your API Token</h1>
+
+<p>Use this token to access the API from scripts:</p>
+
+<div style="background: #f0f0f0; padding: 15px; margin: 20px 0; border-radius: 5px;">
+    <code id="token">{{ token.key }}</code>
+    <button onclick="copyToken()" style="margin-left: 10px;">Copy</button>
+</div>
+
+<p><strong>Created:</strong> {{ token.created }}</p>
+
+<hr>
+<h2>Usage Example</h2>
+
+{% if is_researcher %}
+<h3>Fetch Your Own Data</h3>
+<pre>curl -H "Authorization: Token {{ token.key }}" \
+  {{ request.scheme }}://{{ request.get_host }}/accounts/api/{{ request.user.id }}/data/?data_type=battery</pre>
+
+<h3>Fetch Study Data</h3>
+<pre>curl -H "Authorization: Token {{ token.key }}" \
+  {{ request.scheme }}://{{ request.get_host }}/studies/api/STUDY_ID/data/?data_type=battery</pre>
+{% else %}
+<pre>curl -H "Authorization: Token {{ token.key }}" \
+  {{ request.scheme }}://{{ request.get_host }}/accounts/api/{{ request.user.id }}/data/?data_type=battery</pre>
+{% endif %}
+
+<hr>
+<h2>Regenerate Token</h2>
+<form method="post" onsubmit="return confirm('This will disable your current token. Are you sure?');">
+    {% csrf_token %}
+    <button type="submit" name="regenerate">Regenerate Token</button>
+</form>
+
+<script>
+function copyToken() {
+    navigator.clipboard.writeText('{{ token.key }}');
+    alert('Token copied to clipboard!');
+}
+</script>
+
+<p><a href="{% url 'dashboard' %}">Back to Dashboard</a></p>
+{% endblock %}

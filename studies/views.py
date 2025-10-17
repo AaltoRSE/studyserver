@@ -1,4 +1,3 @@
-import csv
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
@@ -8,12 +7,13 @@ from django.template.loader import get_template
 from django.utils.safestring import mark_safe
 from django.urls import reverse
 from urllib.parse import urlencode
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
 
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 
+from study_server.utils import data_to_csv_response
 from .models import Study, Consent
 from .forms import ConsentAcceptanceForm, DataSourceSelectionForm
 from . import services
@@ -141,34 +141,6 @@ def consent_workflow(request, study_id):
     })
 
 
-@staff_member_required
-def download_consent_data(request, consent_id):
-    consent = get_object_or_404(Consent, id=consent_id)
-    if not request.user.is_superuser:
-        if not consent.study.researchers.filter(user=request.user).exists():
-            return JsonResponse({'error': 'Unauthorized'}, status=403)
-    
-    if not consent.data_source or consent.data_source.status != 'active':
-        return JsonResponse({'error': 'Data source not active'}, status=400)
-    
-    source = consent.data_source.get_real_instance()
-    data_type = request.GET.get('data_type')
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-
-    # return a list of available data types if none specified
-    if not data_type:
-        return JsonResponse({'available_data_types': source.get_data_types()})
-
-    data = source.fetch_data(
-        data_type=data_type,
-        start_date=start_date,
-        end_date=end_date
-    )
-
-    return JsonResponse({'data': data, 'count': len(data)})
-
-
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -213,7 +185,7 @@ def study_data_api(request, study_id):
             all_data.extend(data)
     
     if output_format == 'csv':
-        return _data_to_csv_response(all_data, "study_data.csv")
+        return data_to_csv_response(all_data, "study_data.csv")
     else:
         return JsonResponse({
             'study': study.title,
@@ -222,15 +194,3 @@ def study_data_api(request, study_id):
             'data': all_data
         })
     
-def _data_to_csv_response(data, filename):
-    if not data:
-        return HttpResponse("No data available", content_type='text/plain')
-
-    response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
-    writer = csv.DictWriter(response, fieldnames=data[0].keys())
-    writer.writeheader()
-    writer.writerows(data)
-
-    return response

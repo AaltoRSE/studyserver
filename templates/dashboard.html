@@ -4,6 +4,11 @@
 <h1>Your Dashboard</h1>
 <p>Hello, {{ user.username }}!</p>
 
+<p>
+ <a href="{% url 'manage_token' %}" style="margin-left: 10px;">Show and manage API Token</a>
+</p>
+
+<hr>
 <h2>Your Data Sources</h2>
 <ul>
 {% for source in user.profile.data_sources.all %}
