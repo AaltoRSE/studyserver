@@ -12,6 +12,12 @@ from .models import DataSource, AwareDataSource, JsonUrlDataSource
 from studies.models import Consent
 from datetime import date, datetime, time
 
+from django.conf import settings
+from django.urls import reverse
+from urllib.parse import urlencode
+import requests
+import secrets
+
 
 @login_required
 def select_data_source_type(request):
@@ -65,7 +71,7 @@ def add_data_source(request, source_type):
             
             if new_source.requires_setup:
                 base_url = new_source.get_setup_url()
-                query_params = urlencode({'consent_id': consent.id})
+                query_params = urlencode({'consent_id': consent_id})
                 return redirect(f'{base_url}?{query_params}')
             else:
                 messages.success(request, f"Successfully added data source: {new_source.name}")
@@ -163,3 +169,6 @@ def edit_data_source(request, source_id):
         'data_sources/add_data_source.html', 
         {'form': form, 'title': f'Edit "{real_instance.name}"'}
     )
+
+
+

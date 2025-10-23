@@ -59,7 +59,6 @@ def aware_mobile_setup(request, token):
     return render(request, 'data_sources/aware/mobile_setup.html', context)
 
 
-
 @login_required
 def confirm_aware_source(request, source_id):
     source = get_object_or_404(AwareDataSource, id=source_id, profile=request.user.profile)
