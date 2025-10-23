@@ -1,5 +1,5 @@
 from django import forms
-from .models import JsonUrlDataSource, AwareDataSource
+from .models import JsonUrlDataSource, AwareDataSource, GooglePortabilityDataSource
 
 class JsonUrlDataSourceForm(forms.ModelForm):
     class Meta:
@@ -9,6 +9,11 @@ class JsonUrlDataSourceForm(forms.ModelForm):
 class AwareDataSourceForm(forms.ModelForm):
     class Meta:
         model = AwareDataSource
+        fields = ['name']
+
+class GooglePortabilityDataSourceForm(forms.ModelForm):
+    class Meta:
+        model = GooglePortabilityDataSource
         fields = ['name']
 
 class DataFilterForm(forms.Form):

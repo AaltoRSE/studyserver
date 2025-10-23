@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Google Data Portability OAuth Test</h1>
+
+{% if error %}
+    <div style="color: red; padding: 10px; background: #fee;">
+        <strong>Error:</strong> {{ error }}
+    </div>
+{% endif %}
+
+{{ token }}
+
+{% if tokens %}
+    <h2>Tokens Received</h2>
+    <pre style="background: #f5f5f5; padding: 10px; overflow-x: auto;">{{ tokens|pprint }}</pre>
+    
+    <h2>API Test Results</h2>
+    <p><strong>Status:</strong> {{ api_status }}</p>
+    
+    {% if api_response %}
+        <pre style="background: #f5f5f5; padding: 10px; overflow-x: auto;">{{ api_response|pprint }}</pre>
+    {% endif %}
+    
+    {% if api_error %}
+        <div style="color: red; padding: 10px; background: #fee;">
+            <pre>{{ api_error }}</pre>
+        </div>
+    {% endif %}
+{% else %}
+    <p>Click the button below to start OAuth flow:</p>
+    <a href="{% url 'test_google_oauth' %}">
+        <button>Test Google OAuth</button>
+    </a>
+{% endif %}
+
+<p><a href="{% url 'dashboard' %}">Back to Dashboard</a></p>
+{% endblock %}

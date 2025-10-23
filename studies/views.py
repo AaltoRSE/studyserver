@@ -53,6 +53,7 @@ def study_detail(request, study_id):
         'study': study,
         'request': request,
         'user': request.user,
+        'config_repository': study.raw_content_base_url,
     }
     return render(request, 'studies/study_detail_wrapper.html', {'study_page_content': template.render(context)})
 

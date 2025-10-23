@@ -137,6 +137,8 @@ AWARE_DB_INSERT_PASSWORD = env('AWARE_DB_INSERT_PASSWORD', default='password')
 AWARE_DB_RO_USER = env('AWARE_DB_RO_USER', default='user')
 AWARE_DB_RO_PASSWORD = env('AWARE_DB_RO_PASSWORD', default='password')
 
+GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default='')
+GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
