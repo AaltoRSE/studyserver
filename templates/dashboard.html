@@ -10,18 +10,19 @@
         <div>
             <h2>{{ study.title }}</h2> - <a href="#">(Withdraw)</a>
 
-            {% if data.incomplete_consents %}
-                <h3>This study requires the following data sources</h3>
-                <ul>
-                {% for consent in data.incomplete_consents %}
+            {% for item in data.incomplete_sources %}
+                {% if forloop.first %}
+                    {{ data.first_instructions_html |safe }}
+                {% else %}
+                    <h3>Action Required for {{ item.source.display_type }} </h3>
+                    {% include "studies/consent_action.html" with consent=item.consent study=study source=item.source %}
+                {% endif %}
+            {% endfor %}
 
-                    <li> {{ consent.source_type }}:
-                    </br>
-                        {% include "studies/consent_action.html" with consent=consent study=study %}
-                    </li>
-                {% endfor %}
-                </ul>
-            {% endif %}
+            {% for consent in data.incomplete_consents %}
+                {{ consent.source_type }}:
+                {% include "studies/consent_action.html" with consent=consent study=study %}
+            {% endfor %}
         </div>
     {% endfor %}
     <hr>

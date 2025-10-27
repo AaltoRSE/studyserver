@@ -29,7 +29,7 @@ def _get_aware_instructions_html(request, source, consent_id=None, study_id=None
         'qr_code_image': qr_b64,
         'qr_link': mobile_setup_url,
     }
-    return render(request, 'data_sources/aware/instructions.html', context).content.decode('utf-8')
+    return render(request, 'data_sources/aware/instructions.html', context)
 
 
 @login_required

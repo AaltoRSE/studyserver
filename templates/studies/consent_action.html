@@ -1,5 +1,32 @@
 {% if consent.data_source %}
     {% with source=consent.data_source.get_real_instance %}
+    {% if source.status == 'pending' %}
+        {% if source.requires_setup %}
+            {% if forloop.first and first_instructions_html %}
+                {# Show full instructions inline for first item #}
+                {% autoescape off %}
+                    {{ first_instructions_html }}
+                {% endautoescape %}
+            {% else %}
+                <p><strong>Setup Required</strong></p>
+                <a href="{{ source.get_setup_url }}?consent_id={{ consent.id }}">
+                    <button>
+                        View Setup Instructions
+                    </button>
+                </a>
+            {% endif %}
+        {% endif %}
+            
+        {% if source.requires_confirmation %}
+            <p style="margin-top: 10px;"><strong>Or if you've already set up:</strong></p>
+            <a href="{{ source.get_confirm_url }}?consent_id={{ consent.id }}">
+                <button>
+                    Check for Data
+                </button>
+            </a>
+        {% endif %}
+    {% endif %}
+
     <div>        
         {% if forloop.first and first_instructions_html %}
             {# Show full instructions inline for first item #}
@@ -30,6 +57,7 @@
         {% endif %}
     </div>
     {% endwith %}
+
 {% elif consent.consent_text_accepted %}
     {# Consent accepted, needs data source #}
     <div>
@@ -51,6 +79,7 @@
             <button type="submit" style="padding: 8px 16px;">Create New {{ consent.source_type }}</button>
         </form>
     </div>
+
 {% else %}
     {# No consent yet - show consent form #}
     <div>

@@ -85,31 +85,32 @@ def dashboard(request):
             studies_data[study] = {
                 'active_consents': [],
                 'incomplete_consents': [],
-                'incomplete_with_sources': [],
+                'incomplete_sources': [],
                 'first_instructions_html': None,
             }
 
-        if consent.is_complete:
-            studies_data[study]['active_consents'].append(consent)
-        else:
+        if not consent.is_complete:
             studies_data[study]['incomplete_consents'].append(consent)
-
+        else:
             if consent.data_source:
                 source = consent.data_source.get_real_instance()
-                if source.requires_setup or source.requires_confirmation:
-                    studies_data[study]['incomplete_with_sources'].append({
+                if source.status == 'pending' and (source.requires_setup or source.requires_confirmation):
+                    studies_data[study]['incomplete_sources'].append({
                         'consent': consent,
                         'source': source,
                     })
+                else:
+                    studies_data[study]['active_consents'].append(consent)
 
     for study, data in studies_data.items():
-        if data['incomplete_with_sources']:
-            first_item = data['incomplete_with_sources'][0]
-            data['first_instructions_html'] = first_item['source'].get_instructions_html(
-                request,
-                consent_id=first_item['consent'].id,
-                study_id=study.id
-            )
+        for item in data['incomplete_sources']:
+            if item['source'].requires_setup:
+                data['first_instructions_html'] = item['source'].get_instructions_html(
+                    request,
+                    consent_id=item['consent'].id,
+                    study_id=study.id
+                ).content.decode('utf-8')
+                break
         
         # Add forms for selecting data sources
         for consent in data['incomplete_consents']:
