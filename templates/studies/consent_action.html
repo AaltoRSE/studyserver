@@ -1,0 +1,63 @@
+{% if consent.data_source %}
+    {% with source=consent.data_source.get_real_instance %}
+    <div>        
+        {% if forloop.first and first_instructions_html %}
+            {# Show full instructions inline for first item #}
+            {% autoescape off %}
+                {{ first_instructions_html }}
+            {% endautoescape %}
+        {% else %}
+            {# Show links for remaining items #}
+            {% if source.status == 'pending' %}
+                {% if source.requires_setup %}
+                    <p><strong>Setup Required</strong></p>
+                    <a href="{{ source.get_setup_url }}?consent_id={{ consent.id }}">
+                        <button>
+                            View Setup Instructions
+                        </button>
+                    </a>
+                {% endif %}
+                
+                {% if source.requires_confirmation %}
+                    <p style="margin-top: 10px;"><strong>Or if you've already set up:</strong></p>
+                    <a href="{{ source.get_confirm_url }}?consent_id={{ consent.id }}">
+                        <button>
+                            Check for Data
+                        </button>
+                    </a>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endwith %}
+{% elif consent.consent_text_accepted %}
+    {# Consent accepted, needs data source #}
+    <div>
+        {% if consent.selection_form.fields.source_id.choices|length > 1 %}
+            <h5>Use Existing Source</h5>
+            <form method="post" action="{% url 'consent_workflow' study.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="select">
+                {{ consent.selection_form.source_id }}
+                <button">Continue with Selected Source</button>
+            </form>
+            <p><strong>or</strong></p>
+        {% endif %}
+        
+        <h5>Create New {{ consent.source_type }}</h5>
+        <form method="post" action="{% url 'consent_workflow' study.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create">
+            <button type="submit" style="padding: 8px 16px;">Create New {{ consent.source_type }}</button>
+        </form>
+    </div>
+{% else %}
+    {# No consent yet - show consent form #}
+    <div>
+        <p><strong>Please read and accept the
+        <a href="{% url 'consent_workflow' study.id %}">
+            consent form
+        </a>
+        </strong></p>
+    </div>
+{% endif %}

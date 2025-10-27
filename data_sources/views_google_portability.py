@@ -179,4 +179,3 @@ def check_and_get(request, source_id):
     
     messages.success(request, "Data downloaded successfully and is being processed.")
     return redirect('dashboard')
-

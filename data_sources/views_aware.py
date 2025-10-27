@@ -12,10 +12,8 @@ import base64
 import requests
 
 
-@login_required
-def aware_instructions(request, source_id):
-    source = get_object_or_404(AwareDataSource, id=source_id, profile=request.user.profile)
-
+def _get_aware_instructions_html(request, source, consent_id=None, study_id=None):
+    """Helper function to render AWARE instructions HTML."""
     mobile_setup_url = request.build_absolute_uri(
         reverse('aware_mobile_setup', kwargs={'token': source.config_token})
     )
@@ -23,6 +21,20 @@ def aware_instructions(request, source_id):
     buffer = io.BytesIO()
     qr_img.save(buffer, format='PNG')
     qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    context = {
+        'source': source,
+        'consent_id': consent_id,
+        'study_id': study_id,
+        'qr_code_image': qr_b64,
+        'qr_link': mobile_setup_url,
+    }
+    return render(request, 'data_sources/aware/instructions.html', context).content.decode('utf-8')
+
+
+@login_required
+def aware_instructions(request, source_id):
+    source = get_object_or_404(AwareDataSource, id=source_id, profile=request.user.profile)
 
     consent_id = request.GET.get('consent_id')
     study_id = None
@@ -36,13 +48,8 @@ def aware_instructions(request, source_id):
         else:
             study_id = None
 
-    context = {
-        'source': source,
-        'qr_code_image': qr_b64,
-        'qr_link': mobile_setup_url,
-        'study_id': study_id
-    }
-    return render(request, 'data_sources/aware/instructions.html', context)
+    return _get_aware_instructions_html(request, source, consent_id, study_id)
+
 
 def aware_mobile_setup(request, token):
     source = get_object_or_404(AwareDataSource, config_token=token)

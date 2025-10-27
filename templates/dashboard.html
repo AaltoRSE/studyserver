@@ -4,20 +4,45 @@
 <h1>Your Dashboard</h1>
 <p>Hello, {{ user.username }}!</p>
 
-<p>
- <a href="{% url 'manage_token' %}" style="margin-left: 10px;">Show and manage API Token</a>
-</p>
 
-<hr>
+{% if studies_data %}
+    {% for study, data in studies_data.items %}
+        <div>
+            <h2>{{ study.title }}</h2> - <a href="#">(Withdraw)</a>
+
+            {% if data.incomplete_consents %}
+                <h3>This study requires the following data sources</h3>
+                <ul>
+                {% for consent in data.incomplete_consents %}
+
+                    <li> {{ consent.source_type }}:
+                    </br>
+                        {% include "studies/consent_action.html" with consent=consent study=study %}
+                    </li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+    {% endfor %}
+    <hr>
+{% endif %}
+
+
+
+{% if not active_consents and not incomplete_consents %}
+    <h2>Your Studies</h2>
+    <p>You have not joined any studies yet.</p>
+    <hr>
+{% endif %}
+
+
+
 <h2>Your Data Sources</h2>
 <ul>
 {% for source in user.profile.data_sources.all %}
 <li>
     <strong>{{ source.name }}</strong> ({{ source.display_type }})
 
-    {% if source.status == 'active' %}
-        <a href="{% url 'view_data_source' source.id %}">(View Data)</a>
-    {% endif %}
     {% if source.status == 'pending' and source.get_confirm_url %}
         <a href="{{ source.get_confirm_url }}">(Check for Data)</a>
     {% endif %}
@@ -29,51 +54,40 @@
         <button type="submit" style="background:none; border:none; color:red; cursor:pointer; text-decoration:underline;">(Delete)</button>
     </form>
 </li>
-</li>
+
 {% empty %}
     <li>You have not added any data sources yet.</li>
+    <a href="{% url 'select_data_source_type' %}">Add Data Source</a>
 {% endfor %}
 </ul>
 
-<a href="{% url 'select_data_source_type' %}">Add a new Data Source</a><br>
-
-<hr>
-<h2>Your Studies</h2>
-
-{% if active_consents %}
-    <h3>Active Studies</h3>
-    <ul>
-        {% for consent in active_consents %}
-            <li>{{ consent.study.title }} - <a href="#">(Withdraw)</a></li>
-        {% endfor %}
-    </ul>
-{% endif %}
-
-{% if incomplete_consents %}
-    <h3>Incomplete Studies</h3>
-    <ul>
-        {% for consent in incomplete_consents %}
-            <li>
-                You have not finished signing up for "{{ consent.study.title }}".
-                <a href="{% url 'consent_workflow' consent.study.id %}">Continue Setup</a>
-            </li>
-        {% endfor %}
-    </ul>
-{% endif %}
-
 {% if past_consents %}
-    <h3>Past Studies</h3>
+    <h2>Past Studies</h2>
     <ul>
         {% for consent in past_consents %}
             <li>{{ consent.study.title }} (Withdrawn on {{ consent.revocation_date|date:"Y-m-d" }})</li>
         {% endfor %}
     </ul>
+    <hr>
 {% endif %}
 
-{% if not active_consents and not incomplete_consents and not past_consents %}
-    <p>You have not joined any studies yet.</p>
-{% endif %}
+<details>
+    <summary><strong>Advanced: View Your Data & API Access</strong></summary>
+    <div style="margin-top: 10px;">
+        <h3>View Your Data</h3>
+        <ul>
+        {% for source in user.profile.data_sources.all %}
+            {% if source.status == 'active' %}
+                <li><a href="{% url 'view_data_source' source.id %}">{{ source.name }} - View Data</a></li>
+            {% endif %}
+        {% endfor %}
+        </ul>
+        
+        <h3>API Access</h3>
+        <p><a href="{% url 'manage_token' %}">Manage API Token</a></p>
+    </div>
+</details>
 
+<p style="margin-top: 20px;"><a href="{% url 'logout' %}">Logout</a></p>
 
-<p><a href="{% url 'logout' %}">Logout</a></p>
 {% endblock %}

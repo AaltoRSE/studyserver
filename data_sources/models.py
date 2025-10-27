@@ -31,6 +31,10 @@ class DataSource(PolymorphicModel):
         """Returns a user-friendly name for the data source type."""
         return "Generic Data Source"
     
+    def get_instructions_html(self, request, consent_id=None, study_id=None):
+        """Render setup instructions HTML. Override in subclasses that need instructions."""
+        return None
+
     def get_confirm_url(self):
         print("Getting confirm URL")
         return None
@@ -104,6 +108,12 @@ class AwareDataSource(DataSource):
     def display_type(self):
         return "AWARE Mobile"
     
+    def get_instructions_html(self, request, consent_id=None, study_id=None):
+        from data_sources.views_aware import _get_aware_instructions_html
+        return _get_aware_instructions_html(request, self, consent_id, study_id)
+
+
+
     def confirm_device(self):
         if self.status == 'active':
             return (True, "This device is already active.")

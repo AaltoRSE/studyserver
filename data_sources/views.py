@@ -91,6 +91,13 @@ def add_data_source(request, source_type):
 def delete_data_source(request, source_id):
     source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
     source_name = source.name
+
+    Consent.objects.filter(data_source=source).update(
+        data_source=None,
+        is_complete=False,
+        consent_text_accepted=False
+    )
+
     source.delete()
     messages.success(request, f"Successfully deleted data source: {source_name}")
     return redirect('dashboard')

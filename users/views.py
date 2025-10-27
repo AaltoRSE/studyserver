@@ -10,6 +10,7 @@ from rest_framework.authtoken.models import Token
 
 from study_server.utils import data_to_csv_response
 from users.models import Profile
+from studies.forms import DataSourceSelectionForm
 from .forms import CustomUserCreationForm
 from studies.models import Consent
 
@@ -68,20 +69,60 @@ def manage_token(request):
 
 
 def home(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
     return render(request, 'home.html')
 
 @login_required
 def dashboard(request):
     all_consents = Consent.objects.filter(participant=request.user.profile)
 
-    active_consents = all_consents.filter(is_complete=True, revocation_date__isnull=True)
-    incomplete_consents = all_consents.filter(is_complete=False, revocation_date__isnull=True)
-    past_consents = all_consents.filter(revocation_date__isnull=False)
+    # Group all consents by study
+    studies_data = {}
+    for consent in all_consents.exclude(revocation_date__isnull=False):
+        study = consent.study
+        if study not in studies_data:
+            studies_data[study] = {
+                'active_consents': [],
+                'incomplete_consents': [],
+                'incomplete_with_sources': [],
+                'first_instructions_html': None,
+            }
+
+        if consent.is_complete:
+            studies_data[study]['active_consents'].append(consent)
+        else:
+            studies_data[study]['incomplete_consents'].append(consent)
+
+            if consent.data_source:
+                source = consent.data_source.get_real_instance()
+                if source.requires_setup or source.requires_confirmation:
+                    studies_data[study]['incomplete_with_sources'].append({
+                        'consent': consent,
+                        'source': source,
+                    })
+
+    for study, data in studies_data.items():
+        if data['incomplete_with_sources']:
+            first_item = data['incomplete_with_sources'][0]
+            data['first_instructions_html'] = first_item['source'].get_instructions_html(
+                request,
+                consent_id=first_item['consent'].id,
+                study_id=study.id
+            )
+        
+        # Add forms for selecting data sources
+        for consent in data['incomplete_consents']:
+            if not consent.data_source and consent.consent_text_accepted:
+                available_sources = request.user.profile.data_sources.filter(
+                    polymorphic_ctype__model=consent.source_type.lower(),
+                )
+                consent.selection_form = DataSourceSelectionForm(
+                    available_sources=available_sources
+                )
 
     context = {
-        'active_consents': active_consents,
-        'incomplete_consents': incomplete_consents,
-        'past_consents': past_consents,
+        'studies_data': studies_data,
     }
     return render(request, 'dashboard.html', context)
 

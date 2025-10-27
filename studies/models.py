@@ -50,7 +50,7 @@ class Consent(models.Model):
     study = models.ForeignKey(Study, on_delete=models.CASCADE, related_name='consents')
     data_source = models.ForeignKey(
         DataSource, 
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='consents',
         null=True,
         blank=True
