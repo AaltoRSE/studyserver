@@ -8,6 +8,7 @@ from rest_framework.authentication import TokenAuthentication, SessionAuthentica
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 
+from data_sources import models as data_source_models
 from study_server.utils import data_to_csv_response
 from users.models import Profile
 from studies.forms import DataSourceSelectionForm
@@ -20,7 +21,7 @@ def signup(request):
         if form.is_valid():
             user = form.save(commit=False)
             user.save()
-            Profile.objects.create(
+            Profile.objects.create( 
                 user=user,
                 user_type='participant'
             )
@@ -76,6 +77,7 @@ def home(request):
 @login_required
 def dashboard(request):
     all_consents = Consent.objects.filter(participant=request.user.profile)
+    context = {}
 
     # Group all consents by study
     studies_data = {}
@@ -86,11 +88,16 @@ def dashboard(request):
                 'active_consents': [],
                 'incomplete_consents': [],
                 'incomplete_sources': [],
-                'first_instructions_html': None,
             }
 
         if not consent.is_complete:
-            studies_data[study]['incomplete_consents'].append(consent)
+            source_type = consent.source_type
+            ModelClass = getattr(data_source_models, source_type, None)
+            data_source_display_name = ModelClass.display_type.fget(None)
+            studies_data[study]['incomplete_consents'].append({
+                'consent': consent,
+                'type_name': data_source_display_name,
+            })
         else:
             if consent.data_source:
                 source = consent.data_source.get_real_instance()
@@ -103,17 +110,21 @@ def dashboard(request):
                     studies_data[study]['active_consents'].append(consent)
 
     for study, data in studies_data.items():
-        for item in data['incomplete_sources']:
-            if item['source'].requires_setup:
-                data['first_instructions_html'] = item['source'].get_instructions_html(
-                    request,
-                    consent_id=item['consent'].id,
-                    study_id=study.id
-                ).content.decode('utf-8')
-                break
+        if not 'instructions_template' in context:
+            for item in data['incomplete_sources']:
+                if item['source'].requires_setup:
+                    _context, template = item['source'].get_instructions_card(
+                        request,
+                        consent_id=item['consent'].id,
+                        study_id=study.id
+                    )
+                    context['instructions_template'] = template
+                    context['instructions_context'] = _context
+                    break
         
         # Add forms for selecting data sources
-        for consent in data['incomplete_consents']:
+        for item in data['incomplete_consents']:
+            consent = item['consent']
             if not consent.data_source and consent.consent_text_accepted:
                 available_sources = request.user.profile.data_sources.filter(
                     polymorphic_ctype__model=consent.source_type.lower(),
@@ -122,9 +133,7 @@ def dashboard(request):
                     available_sources=available_sources
                 )
 
-    context = {
-        'studies_data': studies_data,
-    }
+    context['studies_data'] = studies_data
     return render(request, 'dashboard.html', context)
 
 

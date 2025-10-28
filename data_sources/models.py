@@ -29,11 +29,11 @@ class DataSource(PolymorphicModel):
     @property
     def display_type(self):
         """Returns a user-friendly name for the data source type."""
-        return "Generic Data Source"
-    
-    def get_instructions_html(self, request, consent_id=None, study_id=None):
-        """Render setup instructions HTML. Override in subclasses that need instructions."""
-        return None
+        return "Generic Data"
+
+    def get_instructions_card(self, request, consent_id=None, study_id=None):
+        """Returns context and template name for instructions card."""
+        return {}, None
 
     def get_confirm_url(self):
         print("Getting confirm URL")
@@ -57,7 +57,7 @@ class JsonUrlDataSource(DataSource):
     @property
     def display_type(self):
         """Returns a user-friendly name for the data source type."""
-        return "JSON URL"
+        return "JSON URL Data"
     
     def get_data_types(self):
         return ["raw_json"]
@@ -106,13 +106,12 @@ class AwareDataSource(DataSource):
 
     @property
     def display_type(self):
-        return "AWARE Mobile"
+        return "AWARE Mobile Data"
     
-    def get_instructions_html(self, request, consent_id=None, study_id=None):
-        from data_sources.views_aware import _get_aware_instructions_html
-        return _get_aware_instructions_html(request, self, consent_id, study_id)
-
-
+    def get_instructions_card(self, request, consent_id=None, study_id=None):
+        from data_sources.views_aware import _get_aware_instructions_template
+        context, template = _get_aware_instructions_template(request, self, consent_id, study_id)
+        return context, template
 
     def confirm_device(self):
         if self.status == 'active':
@@ -184,14 +183,13 @@ class GooglePortabilityDataSource(DataSource):
 
     @property
     def display_type(self):
-        return "Google Portability"
+        return "Google Portability Data"
 
     def get_data_types(self):
         # Placeholder, I know we will at least have YouTube History
         if self.processing_status == 'processed':
             return ['youtube_history'] 
         return []
-
 
     def fetch_data(self, data_type, limit=1000, start_date=None, end_date=None):
         if self.processing_status == 'processed':

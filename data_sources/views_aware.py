@@ -12,7 +12,7 @@ import base64
 import requests
 
 
-def _get_aware_instructions_html(request, source, consent_id=None, study_id=None):
+def _get_aware_instructions_template(request, source, consent_id=None, study_id=None):
     """Helper function to render AWARE instructions HTML."""
     mobile_setup_url = request.build_absolute_uri(
         reverse('aware_mobile_setup', kwargs={'token': source.config_token})
@@ -25,11 +25,10 @@ def _get_aware_instructions_html(request, source, consent_id=None, study_id=None
     context = {
         'source': source,
         'consent_id': consent_id,
-        'study_id': study_id,
         'qr_code_image': qr_b64,
         'qr_link': mobile_setup_url,
     }
-    return render(request, 'data_sources/aware/instructions.html', context)
+    return context, 'data_sources/aware/instructions_card.html'
 
 
 @login_required
@@ -48,7 +47,12 @@ def aware_instructions(request, source_id):
         else:
             study_id = None
 
-    return _get_aware_instructions_html(request, source, consent_id, study_id)
+    context, template = _get_aware_instructions_template(request, source, consent_id, study_id)
+    context = {
+        'study_id': study_id,
+        'instructions_context': context
+    }
+    return render(request, template, context)
 
 
 def aware_mobile_setup(request, token):

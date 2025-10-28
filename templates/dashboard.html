@@ -11,17 +11,23 @@
             <h2>{{ study.title }}</h2> - <a href="#">(Withdraw)</a>
 
             {% for item in data.incomplete_sources %}
+            <div>
+                <h3> Setup Required for {{ item.source.display_type }} </h3>
                 {% if forloop.first %}
-                    {{ data.first_instructions_html |safe }}
+                    {% include instructions_template %}
                 {% else %}
-                    <h3>Action Required for {{ item.source.display_type }} </h3>
                     {% include "studies/consent_action.html" with consent=item.consent study=study source=item.source %}
                 {% endif %}
+
+                After following the setup instructions, <a href="{{ item.source.get_confirm_url }}">Check for Data</a>
+            </div>
             {% endfor %}
 
-            {% for consent in data.incomplete_consents %}
-                {{ consent.source_type }}:
-                {% include "studies/consent_action.html" with consent=consent study=study %}
+            {% for item in data.incomplete_consents %}
+            <div>
+                <h3>Consent Required for {{ item.type_name }}</h3>
+                {% include "studies/consent_action.html" with consent=item.consent study=study %}
+            </div>
             {% endfor %}
         </div>
     {% endfor %}
@@ -30,13 +36,8 @@
 
 
 
-{% if not active_consents and not incomplete_consents %}
-    <h2>Your Studies</h2>
-    <p>You have not joined any studies yet.</p>
-    <hr>
-{% endif %}
-
-
+<details>
+    <summary><strong>Advanced: View Your Data & API Access</strong></summary>
 
 <h2>Your Data Sources</h2>
 <ul>
@@ -72,21 +73,8 @@
     <hr>
 {% endif %}
 
-<details>
-    <summary><strong>Advanced: View Your Data & API Access</strong></summary>
-    <div style="margin-top: 10px;">
-        <h3>View Your Data</h3>
-        <ul>
-        {% for source in user.profile.data_sources.all %}
-            {% if source.status == 'active' %}
-                <li><a href="{% url 'view_data_source' source.id %}">{{ source.name }} - View Data</a></li>
-            {% endif %}
-        {% endfor %}
-        </ul>
-        
-        <h3>API Access</h3>
-        <p><a href="{% url 'manage_token' %}">Manage API Token</a></p>
-    </div>
+    <h2>API Access</h2>
+    <p><a href="{% url 'manage_token' %}">Manage API Token</a></p>
 </details>
 
 <p style="margin-top: 20px;"><a href="{% url 'logout' %}">Logout</a></p>

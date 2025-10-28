@@ -2,21 +2,9 @@
 
 {% block content %}
 
-<h1>Add an AWARE Data Source</h1>
-<p>Follow these steps to connect your phone:</p>
+{% include 'instructions_card.html' %}
 
-<h2>Connect Your AWARE Device</h2>
-<ol>
-    <li>Install the AWARE Client app on your phone.</li>
-    <li>Scan the QR code below with your phone's camera to open a setup page on your phone.</li>
-    
-    <img src="data:image/png;base64,{{ qr_code_image }}" alt="QR Code">
-</ol>
-<p>This will make it easy to copy and paste the required values into the AWARE app.</p>
-
-<a href="{{ qr_link }}">link</a> 
-
-<br>
+<h3>Setup AWARE Data Source: {{ instructions_context.source.name }}</h3>
 
 {% if study_id %}
     <a href="{% url 'consent_workflow' study_id %}">Back to Join Study</a>
