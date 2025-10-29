@@ -1,15 +1,22 @@
-<h2>{{ study.title }}</h2> - <a href="#">Withdraw from the study</a>
+<h2>{{ study.title }}</h2>
+
+You have enrolled in {{ study.title }}.
+<ul>
+    <li> <a href="{% url 'study_detail' study.id %}">See the Study Page</a> </li>
+    <li> <a href="#">Withdraw from the study.</a> </li>
+</ul>
 
 {% for item in data.incomplete_sources %}
 <div>
     <h3> Setup Required for {{ item.source.display_type }} </h3>
+
+    After following the setup instructions, <a href="{{ item.source.get_confirm_url }}">Click here to check for data</a>
+
     {% if forloop.first %}
         {% include instructions_template %}
     {% else %}
         {% include "studies/consent_action.html" with consent=item.consent study=study source=item.source %}
     {% endif %}
-
-    After following the setup instructions, <a href="{{ item.source.get_confirm_url }}">Check for Data</a>
 </div>
 {% endfor %}
 
@@ -18,4 +25,18 @@
     <h3>Consent Required for {{ item.type_name }}</h3>
     {% include "studies/consent_action.html" with consent=item.consent study=study %}
 </div>
+
+{% if data.optional_consents %}
+    <div>
+        <h3>Optional Data Sources for {{ study.title }}</h3>
+        <ul>
+        {% for opt_item in data.optional_consents %}
+            <li>
+                <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">{{ opt_item.type_name }}</a>
+            </li>
+        {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
 {% endfor %}

@@ -79,7 +79,6 @@ def dashboard(request):
     all_consents = Consent.objects.filter(participant=request.user.profile)
     context = {}
 
-    # Group all consents by study
     studies_data = {}
     for consent in all_consents.exclude(revocation_date__isnull=False):
         study = consent.study
@@ -88,15 +87,23 @@ def dashboard(request):
                 'active_consents': [],
                 'incomplete_consents': [],
                 'incomplete_sources': [],
+                'optional_consents': []
             }
 
-        if not consent.is_complete:
-            source_type = consent.source_type
-            ModelClass = getattr(data_source_models, source_type, None)
-            data_source_display_name = ModelClass.display_type.fget(None)
+        if consent.is_optional:
+            if consent.data_source:
+                source = consent.data_source.get_real_instance()
+            else:
+                source = None
+            studies_data[study]['optional_consents'].append({
+                'consent': consent,
+                'source': source,
+            })
+        elif not consent.is_complete:
+            display_type = consent.get_consent_type_display()
             studies_data[study]['incomplete_consents'].append({
                 'consent': consent,
-                'type_name': data_source_display_name,
+                'type_name': display_type,
             })
         else:
             if consent.data_source:
@@ -109,6 +116,20 @@ def dashboard(request):
                 else:
                     studies_data[study]['active_consents'].append(consent)
 
+    # Add forms for selecting data sources
+    for study, data in studies_data.items():
+        for item in data['incomplete_consents']:
+            consent = item['consent']
+            if not consent.data_source and consent.consent_text_accepted:
+                available_sources = request.user.profile.data_sources.filter(
+                    polymorphic_ctype__model=consent.source_type.lower(),
+                )
+                consent.selection_form = DataSourceSelectionForm(
+                    available_sources=available_sources
+                )
+    context['studies_data'] = studies_data
+    
+    # Find the first incomplete source that requires setup and instructions
     for study, data in studies_data.items():
         if not 'instructions_template' in context:
             for item in data['incomplete_sources']:
@@ -121,19 +142,7 @@ def dashboard(request):
                     context['instructions_template'] = template
                     context['instructions_context'] = _context
                     break
-        
-        # Add forms for selecting data sources
-        for item in data['incomplete_consents']:
-            consent = item['consent']
-            if not consent.data_source and consent.consent_text_accepted:
-                available_sources = request.user.profile.data_sources.filter(
-                    polymorphic_ctype__model=consent.source_type.lower(),
-                )
-                consent.selection_form = DataSourceSelectionForm(
-                    available_sources=available_sources
-                )
-
-    context['studies_data'] = studies_data
+    
     return render(request, 'dashboard.html', context)
 
 
