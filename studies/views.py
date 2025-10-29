@@ -43,9 +43,37 @@ def join_study(request, study_id):
     return redirect('consent_workflow', study_id=study.id)
 
 
+@login_required
+def withdraw_from_study(request, study_id):
+    study = get_object_or_404(Study, id=study_id)
+    profile = request.user.profile
+
+    if request.method == 'POST':
+        consents = Consent.objects.filter(
+            participant=profile,
+            study=study,
+        )
+        for consent in consents:
+            consent.revocation_date = services.get_current_time()
+            consent.is_complete = False
+            consent.save()
+        
+        messages.success(request, f"You have successfully withdrawn from the study '{study.title}'.")
+        return redirect('dashboard')
+    
+    return render(request, 'studies/withdraw_confirmation.html', {'study': study})
+
+
 def study_detail(request, study_id):
     study = get_object_or_404(Study, pk=study_id)
     html_content = services.get_study_page_html(study.raw_content_base_url)
+    user_in_study = False
+    if request.user.is_authenticated and hasattr(request.user, 'profile'):
+        user_in_study = Consent.objects.filter(
+            participant=request.user.profile,
+            study=study,
+            revocation_date__isnull=True
+        ).exists()
 
     template = engines['django'].from_string(html_content)
     
@@ -53,7 +81,9 @@ def study_detail(request, study_id):
         'study': study,
         'request': request,
         'user': request.user,
+        'user_in_study': user_in_study,
         'config_repository': study.raw_content_base_url,
+        'join_or_login_section': "studies/study_page_components/join_or_login_section.html"
     }
     return render(request, 'studies/study_detail_wrapper.html', {'study_page_content': template.render(context)})
 

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Withdraw from {{ study.title }}</h2>
+<p>Are you sure you want to withdraw from this study? This will revoke all your consents and stop data sharing.</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" style="color: red;">Yes, Withdraw</button>
+    <a href="{% url 'dashboard' %}">Cancel</a>
+</form>
+{% endblock %}

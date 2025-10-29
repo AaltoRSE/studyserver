@@ -3,7 +3,9 @@
 You have enrolled in {{ study.title }}.
 <ul>
     <li> <a href="{% url 'study_detail' study.id %}">See the Study Page</a> </li>
-    <li> <a href="#">Withdraw from the study.</a> </li>
+    <li>
+        <a href="{% url 'withdraw_from_study' study.id %}">Withdraw from the study.</a>
+    </li>
 </ul>
 
 {% for item in data.incomplete_sources %}
