@@ -76,6 +76,9 @@ def home(request):
 
 @login_required
 def dashboard(request):
+    if request.user.profile.user_type == 'researcher':
+        return redirect('researcher_dashboard')
+
     all_consents = Consent.objects.filter(participant=request.user.profile)
     context = {}
 
@@ -144,6 +147,57 @@ def dashboard(request):
                     break
     
     return render(request, 'dashboard.html', context)
+
+
+@login_required
+def researcher_dashboard(request):
+    if request.user.profile.user_type != 'researcher':
+        messages.error(request, "Access denied: Researcher dashboard is only for researchers.")
+        return redirect('dashboard')
+
+    studies = request.user.profile.studies.all()
+    studies_data = []
+
+    for study in studies:
+        all_consents = Consent.objects.filter(study=study, revocation_date__isnull=True)
+        withdrawn = Consent.objects.filter(study=study, revocation_date__isnull=False).count()
+
+        participants = []
+        participant_profiles = all_consents.values_list('participant', flat=True).distinct()
+        for profile_id in participant_profiles:
+            profile = Profile.objects.get(id=profile_id)
+            profile = Profile.objects.get(id=profile_id)
+            participant_consents = all_consents.filter(participant=profile)
+            
+            required_consents = participant_consents.filter(is_optional=False)
+            optional_consents = participant_consents.filter(is_optional=True)
+
+            required_complete = required_consents.filter(is_complete=True).count()
+            required_total = required_consents.count()
+            optional_complete = optional_consents.filter(is_complete=True).count()
+            optional_total = optional_consents.count()
+
+            status = 'Complete' if required_complete == required_total else 'Incomplete'
+
+            participants.append({
+                'id': profile.id,
+                'email': profile.user.email,
+                'required_complete': required_complete,
+                'required_total': required_total,
+                'optional_complete': optional_complete,
+                'optional_total': optional_total,
+                'status': status
+            })
+            
+        studies_data.append({
+            'study': study,
+            'participants': participants,
+            'total_consents': all_consents.count(),
+            'withdrawn': withdrawn,
+        })
+
+    context = {'studies_data': studies_data}
+    return render(request, 'researcher_dashboard.html', context)
 
 
 @api_view(['GET'])

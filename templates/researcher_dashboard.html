@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Researcher Dashboard</h1>
+<p>Hello, {{ user.username }}!</p>
+
+<h2>Your Studies</h2>
+
+
+{% if studies_data %}
+    {% for study_data in studies_data %}
+    <div>
+        <h2>{{ study_data.study.title }}</h2>
+        <p>{{ study_data.study.description }}</p>
+        
+        <h3>Participants ({{ study_data.participants|length }} active, {{ study_data.withdrawn }} withdrawn)</h3>
+        {% if study_data.participants %}
+        <table border="1" style="width:100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th>Participant ID</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Required Consents</th>
+                    <th>Optional Consents</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for participant in study_data.participants %}
+                <tr>
+                    <td>{{ participant.id }}</td>
+                    <td>{{ participant.email }}</td>
+                    <td>{{ participant.status }}</td>
+                    <td>{{ participant.required_complete }}/{{ participant.required_total }}</td>
+                    <td>{{ participant.optional_complete }}/{{ participant.optional_total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No participants yet.</p>
+        {% endif %}
+        
+        <h3>Actions</h3>
+        <ul>
+            <li><a href="{% url 'study_detail' study_data.study.id %}">View Study Page</a></li>
+            <li><a href="/admin/studies/study/{{ study_data.study.id }}/change/">Edit Study in Admin</a></li>
+            <li><a href="{% url 'study_data_api' study_data.study.id %}">Access Data API</a></li>
+        </ul>
+    </div>
+    {% endfor %}
+
+{% else %}
+    <p>You are not assigned to any studies yet.</p>
+{% endif %}
+
+<p style="margin-top: 20px;"><a href="{% url 'logout' %}">Logout</a></p>
+
+{% endblock %}
