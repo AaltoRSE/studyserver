@@ -8,60 +8,12 @@
 {% if studies_data %}
     {% for study, data in studies_data.items %}
         <div>
-            <h2>{{ study.title }}</h2> - <a href="#">(Withdraw)</a>
-
-            {% for item in data.incomplete_sources %}
-            <div>
-                <h3> Setup Required for {{ item.source.display_type }} </h3>
-                {% if forloop.first %}
-                    {% include instructions_template %}
-                {% else %}
-                    {% include "studies/consent_action.html" with consent=item.consent study=study source=item.source %}
-                {% endif %}
-
-                After following the setup instructions, <a href="{{ item.source.get_confirm_url }}">Check for Data</a>
-            </div>
-            {% endfor %}
-
-            {% for item in data.incomplete_consents %}
-            <div>
-                <h3>Consent Required for {{ item.type_name }}</h3>
-                {% include "studies/consent_action.html" with consent=item.consent study=study %}
-            </div>
-            {% endfor %}
+            {% include "dashboard_components/study_detail.html" %}
         </div>
     {% endfor %}
     <hr>
 {% endif %}
 
-
-
-<details>
-    <summary><strong>Advanced: View Your Data & API Access</strong></summary>
-
-<h2>Your Data Sources</h2>
-<ul>
-{% for source in user.profile.data_sources.all %}
-<li>
-    <strong>{{ source.name }}</strong> ({{ source.display_type }})
-
-    {% if source.status == 'pending' and source.get_confirm_url %}
-        <a href="{{ source.get_confirm_url }}">(Check for Data)</a>
-    {% endif %}
-
-    <a href="{% url 'edit_data_source' source.id %}">(Edit)</a>
-
-    <form style="display: inline;" method="post" action="{% url 'delete_data_source' source.id %}" onsubmit="return confirm('Are you sure you want to delete this source?');">
-        {% csrf_token %}
-        <button type="submit" style="background:none; border:none; color:red; cursor:pointer; text-decoration:underline;">(Delete)</button>
-    </form>
-</li>
-
-{% empty %}
-    <li>You have not added any data sources yet.</li>
-    <a href="{% url 'select_data_source_type' %}">Add Data Source</a>
-{% endfor %}
-</ul>
 
 {% if past_consents %}
     <h2>Past Studies</h2>
@@ -73,8 +25,9 @@
     <hr>
 {% endif %}
 
-    <h2>API Access</h2>
-    <p><a href="{% url 'manage_token' %}">Manage API Token</a></p>
+
+<details>
+    {% include "dashboard_components/advanced_section.html" %}
 </details>
 
 <p style="margin-top: 20px;"><a href="{% url 'logout' %}">Logout</a></p>

@@ -1,0 +1,21 @@
+<h2>{{ study.title }}</h2> - <a href="#">Withdraw from the study</a>
+
+{% for item in data.incomplete_sources %}
+<div>
+    <h3> Setup Required for {{ item.source.display_type }} </h3>
+    {% if forloop.first %}
+        {% include instructions_template %}
+    {% else %}
+        {% include "studies/consent_action.html" with consent=item.consent study=study source=item.source %}
+    {% endif %}
+
+    After following the setup instructions, <a href="{{ item.source.get_confirm_url }}">Check for Data</a>
+</div>
+{% endfor %}
+
+{% for item in data.incomplete_consents %}
+<div>
+    <h3>Consent Required for {{ item.type_name }}</h3>
+    {% include "studies/consent_action.html" with consent=item.consent study=study %}
+</div>
+{% endfor %}
