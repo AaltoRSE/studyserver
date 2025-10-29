@@ -33,6 +33,7 @@
                     <td>{{ participant.status }}</td>
                     <td>{{ participant.required_complete }}/{{ participant.required_total }}</td>
                     <td>{{ participant.optional_complete }}/{{ participant.optional_total }}</td>
+                    <td><a href="{% url 'participant_detail' study_data.study.id participant.id %}">View Details</a></td>
                 </tr>
                 {% endfor %}
             </tbody>

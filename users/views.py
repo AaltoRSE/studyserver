@@ -1,16 +1,17 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Group
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.authtoken.models import Token
 
-from data_sources import models as data_source_models
 from study_server.utils import data_to_csv_response
 from users.models import Profile
+from studies.models import Study, Consent
 from studies.forms import DataSourceSelectionForm
 from .forms import CustomUserCreationForm
 from studies.models import Consent
@@ -199,6 +200,50 @@ def researcher_dashboard(request):
     context = {'studies_data': studies_data}
     return render(request, 'researcher_dashboard.html', context)
 
+
+@login_required
+def participant_detail(request, study_id, participant_id):
+    study = get_object_or_404(Study, id=study_id)
+    participant = get_object_or_404(Profile, id=participant_id)
+
+    # Verify researcher has access to this study
+    if request.user.profile.user_type != 'researcher':
+        return redirect('dashboard')
+    if not study.researchers.filter(user=request.user).exists() and not request.user.is_superuser:
+        messages.error(request, "You don't have permission to view this participant.")
+        return redirect('researcher_dashboard')
+    
+    consents = Consent.objects.filter(study=study, participant=participant)
+
+    consent_info = []
+    for consent in consents:
+        info = {
+            'source_type': consent.source_type,
+            'is_optional': consent.is_optional,
+            'is_complete': consent.is_complete,
+            'consent_text_accepted': consent.consent_text_accepted,
+            'consent_date': consent.consent_date,
+        }
+        if consent.data_source:
+            source = consent.data_source.get_real_instance()
+            info['data_source'] = {
+                'name': source.name,
+                'status': source.status,
+                'type': source.display_type,
+                'date_added': source.date_added,
+            }
+        else:
+            info['data_source'] = None
+
+        consent_info.append(info)
+
+    context = {
+        'study': study,
+        'participant': participant,
+        'consent_info': consent_info,
+    }
+
+    return render(request, 'users/participant_detail.html', context)
 
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication, SessionAuthentication])

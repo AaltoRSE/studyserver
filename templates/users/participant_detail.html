@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Participant Details</h1>
+
+
+<h2>Study: {{ study.title }}</h2>
+<h3>Participant ID: {{ participant.id }}</h3>
+<p>Email: {{ participant.email }}</p>
+
+<h3>Consents and Data Sources</h3>
+{% for consent in consent_info %}
+<div>
+    <h4>{{ consent.source_type }}
+        {% if consent.is_optional %}
+            (Optional)
+        {% endif %}
+    </h4>
+    <p><strong>Status:</strong>
+        {% if consent.is_complete %}
+            <span style="color: green;">Complete</span>
+        {% else %}
+            <span style="color: orange;">Incomplete</span>
+        {% endif %}
+    </p>
+
+     <p><strong>Consent Text Accepted:</strong> 
+        {% if consent.consent_text %}
+            Yes, on {{ consent.consent_date|date:"Y-m-d H:i" }}
+        {% else %}
+            No
+        {% endif %}
+    </p>
+
+    {% if consent.data_source %}
+        <p><strong>Data Source:</strong> {{ consent.data_source.display_type }}</p>
+        <ul>
+            <li>Type: {{ consent.data_source.type }}</li>
+            <li>Details: {{ consent.data_source.details }}</li>
+            <li>Status: {{ consent.data_source.status }}</li>
+            <li>Added: {{ consent.data_source.date_added|date:"Y-m-d H:i" }}</li>
+        </ul>
+    {% else %}
+    <p><strong>Data Source:</strong> Not linked yet</p>
+    {% endif %}
+</div>
+<hr>
+{% endfor %}
+
+<p><a href="{% url 'researcher_dashboard' %}">Back to Dashboard</a></p>
+
+
+{% endblock %}
