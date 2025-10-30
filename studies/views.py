@@ -93,13 +93,17 @@ def consent_workflow(request, study_id):
     study = get_object_or_404(Study, pk=study_id)
     profile = request.user.profile
 
-    consent = Consent.objects.filter(
-        participant=profile,
-        study=study,
-        is_complete=False,
-        is_optional=False,
-        revocation_date__isnull=True
-    ).first()
+    consent_id = request.GET.get('consent_id')
+    if consent_id:
+        consent = get_object_or_404(Consent, id=consent_id, participant=profile, study=study, revocation_date__isnull=True)
+    else:
+        consent = Consent.objects.filter(
+            participant=profile,
+            study=study,
+            is_complete=False,
+            is_optional=False,
+            revocation_date__isnull=True
+        ).first()
 
     if not consent:
         messages.success(request, f"All required sources set up for '{study.title}'")
@@ -117,7 +121,7 @@ def consent_workflow(request, study_id):
                 if consent.data_source:
                     consent.is_complete = True
                 consent.save()
-                return redirect('consent_workflow', study_id=study.id)
+                return redirect(f"{reverse('consent_workflow', args=[study.id])}?consent_id={consent.id}")
         else:
             form = ConsentAcceptanceForm()
 

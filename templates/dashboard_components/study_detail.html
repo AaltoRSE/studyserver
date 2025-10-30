@@ -28,17 +28,17 @@ You have enrolled in {{ study.title }}.
     {% include "studies/consent_action.html" with consent=item.consent study=study %}
 </div>
 
+{% endfor %}
+
 {% if data.optional_consents %}
     <div>
         <h3>Optional Data Sources for {{ study.title }}</h3>
         <ul>
         {% for opt_item in data.optional_consents %}
             <li>
-                <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">{{ opt_item.type_name }}</a>
+                Setup {{ opt_item.consent.source_type }}: <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">here</a>
             </li>
         {% endfor %}
         </ul>
     </div>
 {% endif %}
-
-{% endfor %}
