@@ -159,9 +159,9 @@ def check_and_get(request, source_id):
         for i, url in enumerate(download_urls):
             file_response = requests.get(url)
 
-            with open(f'google_data_{job_id}_{i}.zip', 'wb') as f:
+            with open(f'data/google_data_{job_id}_{i}.zip', 'wb') as f:
                 f.write(file_response.content)
-            source.downloaded_files.append(f'google_data_{job_id}_{i}.zip')
+            source.downloaded_files.append(f'data/google_data_{job_id}_{i}.zip')
         source.processing_status = 'processing'
         source.save()
         
