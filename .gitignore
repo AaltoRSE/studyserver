@@ -14,3 +14,5 @@ study_server/local_settings.py
 # IDEs
 .vscode/
 
+# Data
+data/
