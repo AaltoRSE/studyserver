@@ -71,8 +71,11 @@ def add_data_source(request, source_type):
             
             if new_source.requires_setup:
                 base_url = new_source.get_setup_url()
-                query_params = urlencode({'consent_id': consent_id})
-                return redirect(f'{base_url}?{query_params}')
+                if consent_id:
+                    query_params = urlencode({'consent_id': consent_id})
+                    return redirect(f'{base_url}?{query_params}')
+                else:
+                    return redirect(base_url)
             else:
                 messages.success(request, f"Successfully added data source: {new_source.name}")
                 if consent_id:

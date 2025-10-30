@@ -37,7 +37,7 @@ def aware_instructions(request, source_id):
 
     consent_id = request.GET.get('consent_id')
     study_id = None
-    if consent_id:
+    if consent_id in [None, '', 'None']:
         consent = Consent.objects.filter(
             id=consent_id, 
             participant=request.user.profile
