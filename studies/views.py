@@ -141,7 +141,6 @@ def consent_workflow(request, study_id):
         })
 
     # handle the datasource selection box and new datasource button
-
     available_sources = profile.data_sources.filter(
         polymorphic_ctype__model=consent.source_type.lower(),
     )
