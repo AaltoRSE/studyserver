@@ -122,10 +122,10 @@ def aware_config_api(request, token):
         "sensors": []
     }
     for study in studies:
-        config_filename = study.source_configurations.get('AwareDataSource')
-        if not config_filename or not study.page_url:
+        config_filename = study.source_configurations.get('AwareDataSource', "aware_config.json")
+        base_url = study.raw_content_base_url
+        if not base_url:
             continue
-        base_url = study.page_url.rsplit('/', 1)[0]
         full_config_url = f"{base_url}/{config_filename}"
         try:
             response = requests.get(full_config_url, timeout=5)

@@ -104,7 +104,7 @@ def dashboard(request):
                 'source': source,
             })
         elif not consent.is_complete:
-            display_type = consent.get_consent_type_display()
+            display_type = consent.source_type
             studies_data[study]['incomplete_consents'].append({
                 'consent': consent,
                 'type_name': display_type,
@@ -173,7 +173,11 @@ def researcher_dashboard(request):
             required_consents = participant_consents.filter(is_optional=False)
             optional_consents = participant_consents.filter(is_optional=True)
 
-            required_complete = required_consents.filter(is_complete=True).count()
+            required_consents_complete = required_consents.filter(
+                is_complete=True,
+                data_source__status='active'
+            )
+            required_complete = required_consents_complete.count()
             required_total = required_consents.count()
             optional_complete = optional_consents.filter(is_complete=True).count()
             optional_total = optional_consents.count()

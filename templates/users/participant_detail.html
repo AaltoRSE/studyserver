@@ -17,20 +17,26 @@
         {% endif %}
     </h4>
     <p><strong>Status:</strong>
-        {% if consent.is_complete %}
-            <span style="color: green;">Complete</span>
+        {% if consent.data_source %}
+            Consent text accepted on {{ consent.consent_date|date:"Y-m-d H:i" }}
+            {% if consent.data_source.status == 'active' %}
+                <span style="color: green;">Active</span>
+            {% elif consent.data_source.status == 'pending' %}
+                <span style="color: orange;">Pending Setup</span>
+            {% else %}
+                <span style="color: orange;">Inactive</span>
+            {% endif %}
+        {% elif consent.is_complete %}
+            Consent text accepted on {{ consent.consent_date|date:"Y-m-d H:i" }}
+            <span style="color: orange;">Data source not linked</span>
         {% else %}
-            <span style="color: orange;">Incomplete</span>
+            <span style="color: red;">No consent</span>
         {% endif %}
     </p>
 
-     <p><strong>Consent Text Accepted:</strong> 
-        {% if consent.consent_text %}
-            Yes, on {{ consent.consent_date|date:"Y-m-d H:i" }}
-        {% else %}
-            No
-        {% endif %}
-    </p>
+    {% if consent.revocation_date %}
+        <p><strong>Withdrawn on:</strong> {{ consent.revocation_date|date:"Y-m-d H:i" }}</p>
+    {% endif %}
 
     {% if consent.data_source %}
         <p><strong>Data Source:</strong> {{ consent.data_source.display_type }}</p>

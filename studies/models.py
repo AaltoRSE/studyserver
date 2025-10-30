@@ -22,6 +22,11 @@ class Study(models.Model):
         help_text="List of optional source types, e.g., ['JsonUrlDataSource']"
     )
     config_url = models.URLField(max_length=500, help_text="URL for fetching study configuration")
+    source_configurations = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Mapping of source configuration files for the study"
+    )
 
     @property
     def raw_content_base_url(self):

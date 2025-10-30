@@ -1,14 +1,15 @@
- - Dashboard should be the user from page.
- - List studies in researcher dashboard.
- - Implement withdraw from study.
- - List participants instead of data source consents
- - includable template for join study / login  for study pages
- - Consent admin is not useful for researchers
- - Google takeout extension updated, uploaded extension
- - In previous studies no-one really asked for the their participant data
- - Automatically create data sources needed for a study
- - Simplify and tailor participant view for a single study
- - Render the instructions directly for on the dashboard
- - See your own data should be advanced
- - Test the takeout extension on a phone
- - Simplify the donation workflow as much as possible. As few clicks as possible for the participant.
+
+ - List social media, find which have a data API
+   - Google portability, likely useful:
+    - https://www.googleapis.com/auth/dataportability.myactivity.play
+    - https://www.googleapis.com/auth/dataportability.play.installs
+    - https://www.googleapis.com/auth/dataportability.myactivity.youtube
+    - https://www.googleapis.com/auth/dataportability.myactivity.search
+    - https://www.googleapis.com/auth/dataportability.chrome.history
+    - https://www.googleapis.com/auth/dataportability.discover.follows
+    - https://www.googleapis.com/auth/dataportability.discover.likes
+    - https://www.googleapis.com/auth/dataportability.discover.not_interested	
+ - Apple / iphone data API?
+ - Tiktok API
+ - Meta?
+ - News aggregators, reddit, yle, ...

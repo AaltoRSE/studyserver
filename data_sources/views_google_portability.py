@@ -26,7 +26,6 @@ def auth_start(request, source_id):
     redirect_url = request.build_absolute_uri(
         reverse('google_portability_auth_callback')
     )
-    print(redirect_url)
     
     params = {
         'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
@@ -39,14 +38,11 @@ def auth_start(request, source_id):
     }
     
     auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    print("Redirecting to Google OAuth URL:", auth_url)
     return redirect(auth_url)
 
 
 @login_required
 def auth_callback(request):
-    print("Received Google OAuth callback with params:", request.GET.dict())
-    
     error = request.GET.get('error')
     if error:
         messages.error(request, f"Google authorization failed: {error}")
@@ -77,7 +73,6 @@ def auth_callback(request):
         'redirect_uri': request.build_absolute_uri(reverse('google_portability_auth_callback')),
         'grant_type': 'authorization_code',
     }
-    print(token_data)
 
     try:
         response = requests.post(token_url, data=token_data)
