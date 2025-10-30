@@ -92,16 +92,17 @@ def study_detail(request, study_id):
 def consent_workflow(request, study_id):
     study = get_object_or_404(Study, pk=study_id)
     profile = request.user.profile
-    
+
     consent = Consent.objects.filter(
         participant=profile,
         study=study,
         is_complete=False,
+        is_optional=False,
         revocation_date__isnull=True
     ).first()
 
     if not consent:
-        messages.success(request, f"All consents complete for '{study.title}'")
+        messages.success(request, f"All required sources set up for '{study.title}'")
         return redirect('dashboard')
 
     html_template = services.get_consent_template(study, consent.source_type)
@@ -113,6 +114,8 @@ def consent_workflow(request, study_id):
             form = ConsentAcceptanceForm(request.POST)
             if form.is_valid():
                 consent.consent_text_accepted = True
+                if consent.data_source:
+                    consent.is_complete = True
                 consent.save()
                 return redirect('consent_workflow', study_id=study.id)
         else:

@@ -20,9 +20,9 @@
 
 {% empty %}
     <li>You have not added any data sources yet.</li>
-    <a href="{% url 'select_data_source_type' %}">Add Data Source</a>
 {% endfor %}
 </ul>
+<a href="{% url 'select_data_source_type' %}">Add Data Source</a>
 
 <h2>API Access</h2>
 <p><a href="{% url 'manage_token' %}">Manage API Token</a></p>

@@ -1,4 +1,7 @@
+from django.apps import apps
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from users.models import Profile
 from data_sources.models import DataSource
 
@@ -69,3 +72,24 @@ class Consent(models.Model):
     
     def __str__(self):
         return f"Consent of {self.participant.user.username} for {self.study.title}"
+
+
+@receiver(post_save, sender=Consent)
+def create_data_source_for_consent(sender, instance, created, **kwargs):
+    if instance.is_optional:
+        return
+    if created and instance.data_source is None:
+        all_models = apps.get_app_config('data_sources').get_models()
+        for model in all_models:
+            if issubclass(model, DataSource) and model.__name__ == instance.source_type:
+                existing_source = model.objects.filter(
+                    profile=instance.participant
+                ).first()
+                if not existing_source:
+                    new_source = model.objects.create(
+                        profile=instance.participant,
+                        name=f"{instance.study.title} - {model.display_type.fget(None)}"
+                    )
+                    instance.data_source = new_source
+                instance.save()
+                break
