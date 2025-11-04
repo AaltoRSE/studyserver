@@ -96,7 +96,6 @@ def aware_config_api(request, token):
     studies = [consent.study for consent in active_consents]
     config_json = {
         "_id": "Aalto RSE studypage",
-        "device_label": aware_data_source.device_label,
         "study_info": {
             "study_title": "Polalpha",
             "study_description": "Alpha study for POLWELL and POLEMIC",
@@ -119,7 +118,11 @@ def aware_config_api(request, token):
         "updatedAt": "2025-09-25T12:30:13.411Z",
         "questions": [],
         "schedules": [],
-        "sensors": []
+        "sensors": [
+            {
+                "device_label": aware_data_source.device_label
+            }
+        ]
     }
     for study in studies:
         config_filename = study.source_configurations.get('AwareDataSource', "aware_config.json")
@@ -133,7 +136,9 @@ def aware_config_api(request, token):
             study_config = response.json()
             config_json['questions'].extend(study_config.get('questions', []))
             config_json['schedules'].extend(study_config.get('schedules', []))
-            config_json['sensors'].extend(study_config.get('sensors', []))
+            sensors = study_config.get('sensors', [])
+            sensors = [sensor for sensor in sensors if 'device_label' not in sensor]
+            config_json['sensors'].extend(sensors)
         except requests.exceptions.RequestException:
             print(f"ERROR: Failed to retrieve study config for {study.title}. URL: {full_config_url}")
             continue
