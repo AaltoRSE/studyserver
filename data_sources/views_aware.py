@@ -120,7 +120,7 @@ def aware_config_api(request, token):
         "schedules": [],
         "sensors": [
             {
-                "device_label": aware_data_source.device_label
+                "setting": "device_label", "value": aware_data_source.device_label
             }
         ]
     }
@@ -137,7 +137,7 @@ def aware_config_api(request, token):
             config_json['questions'].extend(study_config.get('questions', []))
             config_json['schedules'].extend(study_config.get('schedules', []))
             sensors = study_config.get('sensors', [])
-            sensors = [sensor for sensor in sensors if 'device_label' not in sensor]
+            sensors = [sensor for sensor in sensors if sensor.get('setting') != 'device_label']
             config_json['sensors'].extend(sensors)
         except requests.exceptions.RequestException:
             print(f"ERROR: Failed to retrieve study config for {study.title}. URL: {full_config_url}")
