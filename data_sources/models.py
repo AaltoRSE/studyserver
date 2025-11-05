@@ -36,7 +36,6 @@ class DataSource(PolymorphicModel):
         return {}, None
 
     def get_confirm_url(self):
-        print("Getting confirm URL")
         return None
 
     def get_data_types(self):
