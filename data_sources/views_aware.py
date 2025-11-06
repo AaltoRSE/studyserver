@@ -6,53 +6,8 @@ from django.conf import settings
 from django.contrib import messages
 from .models import AwareDataSource
 from studies.models import Consent
-import qrcode
-import io
-import base64
 import requests
 
-
-def _get_aware_instructions_template(request, source, consent_id=None, study_id=None):
-    """Helper function to render AWARE instructions HTML."""
-    mobile_setup_url = request.build_absolute_uri(
-        reverse('aware_mobile_setup', kwargs={'token': source.config_token})
-    )
-    qr_img = qrcode.make(mobile_setup_url)
-    buffer = io.BytesIO()
-    qr_img.save(buffer, format='PNG')
-    qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-    context = {
-        'source': source,
-        'consent_id': consent_id,
-        'qr_code_image': qr_b64,
-        'qr_link': mobile_setup_url,
-    }
-    return context, 'data_sources/aware/instructions_card.html'
-
-
-@login_required
-def aware_instructions(request, source_id):
-    source = get_object_or_404(AwareDataSource, id=source_id, profile=request.user.profile)
-
-    consent_id = request.GET.get('consent_id')
-    study_id = None
-    if consent_id in [None, '', 'None']:
-        consent = Consent.objects.filter(
-            id=consent_id, 
-            participant=request.user.profile
-        ).first()
-        if consent:
-            study_id = consent.study.id
-        else:
-            study_id = None
-
-    context, template = _get_aware_instructions_template(request, source, consent_id, study_id)
-    context = {
-        'study_id': study_id,
-        'instructions_context': context
-    }
-    return render(request, template, context)
 
 
 def aware_mobile_setup(request, token):

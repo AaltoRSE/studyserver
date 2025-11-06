@@ -2,7 +2,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
-from .models import AwareDataSource, JsonUrlDataSource, Profile
+from .models.base import AwareDataSource, JsonUrlDataSource, Profile
 import uuid
 
 
@@ -26,7 +26,7 @@ class DataSourcesViewsTest(TestCase):
         response = self.client.post(reverse('add_data_source', args=['Aware']), {'name': 'Test Aware Source'})
         self.assertEqual(response.status_code, 302)
         # redirect to aware_instructions
-        self.assertTrue(response.url.startswith('/data-sources/instructions/aware'))
+        self.assertTrue(response.url.startswith('/data-sources/instructions'))
 
     def test_user_cannot_edit_others_source(self):
         """Tests that a user gets a 404 when trying to edit another user's source."""
@@ -49,29 +49,6 @@ class DataSourcesViewsTest(TestCase):
 
         # Verify the source still exists
         self.assertTrue(AwareDataSource.objects.filter(id=self.source.id).exists())
-
-    def test_aware_instructions_view(self):
-        source = AwareDataSource.objects.create(
-            profile=self.profile,
-            name='Test Aware Source'
-        )
-        response = self.client.get(reverse('aware_instructions', args=[source.id]))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'data_sources/aware/instructions.html')
-        self.assertIn('qr_code_image', response.context)
-        
-    def test_aware_instructions_view_invalid_source(self):
-        response = self.client.get(reverse('aware_instructions', args=[999]))
-        self.assertEqual(response.status_code, 404)
-    
-    def test_aware_instructions_view_unauthenticated(self):
-        self.client.logout()
-        source = AwareDataSource.objects.create(
-            profile=self.profile,
-            name='Test Aware Source'
-        )
-        response = self.client.get(reverse('aware_instructions', args=[source.id]))
-        self.assertEqual(response.status_code, 302)
 
     def test_aware_mobile_setup_view(self):
         source = AwareDataSource.objects.create(

@@ -1,8 +1,13 @@
 from django.db import models
 from django.urls import reverse
+import qrcode
 from .base import DataSource
 from . import db_connector
 import uuid
+import qrcode
+import io
+import base64
+
 
 
 class AwareDataSource(DataSource):
@@ -27,9 +32,24 @@ class AwareDataSource(DataSource):
         return "AWARE Mobile Data"
     
     def get_instructions_card(self, request, consent_id=None, study_id=None):
-        from data_sources.views_aware import _get_aware_instructions_template
-        context, template = _get_aware_instructions_template(request, self, consent_id, study_id)
-        return context, template
+        mobile_setup_url = request.build_absolute_uri(
+            reverse(
+                'aware_mobile_setup',
+                kwargs={'token': self.config_token}
+            )
+        )
+        qr_img = qrcode.make(mobile_setup_url)
+        buffer = io.BytesIO()
+        qr_img.save(buffer, format='PNG')
+        qr_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        context = {
+            'source': self,
+            'consent_id': consent_id,
+            'qr_code_image': qr_b64,
+            'qr_link': mobile_setup_url,
+        }
+        return context, 'data_sources/aware/instructions_card.html'
 
     def confirm_device(self):
         if self.status == 'active':

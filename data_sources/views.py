@@ -28,6 +28,7 @@ def select_data_source_type(request):
             
     return render(request, 'data_sources/select_source_type.html', {'types': source_types})
 
+
 def add_data_source(request, source_type):
     consent_id = request.GET.get('consent_id')
     if consent_id:
@@ -84,6 +85,7 @@ def add_data_source(request, source_type):
     
     title = f"Add {source_type.replace('_', ' ').title()} Source"
     return render(request, 'data_sources/add_data_source.html', {'form': form, 'title': title})
+
 
 @require_POST
 @login_required
@@ -176,5 +178,30 @@ def edit_data_source(request, source_id):
         {'form': form, 'title': f'Edit "{real_instance.name}"'}
     )
 
+
+@login_required
+def instructions(request, source_id):
+    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    real_source = source.get_real_instance()
+
+    consent_id = request.GET.get('consent_id')
+    study_id = None
+    if consent_id in [None, '', 'None']:
+        consent = Consent.objects.filter(
+            id=consent_id, 
+            participant=request.user.profile
+        ).first()
+        if consent:
+            study_id = consent.study.id
+        else:
+            study_id = None
+    
+    context, template = real_source.get_instructions_template(request, consent_id, study_id)
+
+    context = {
+        'study_id': study_id,
+        'instructions_context': context
+    }
+    return render(request, template, context)
 
 
