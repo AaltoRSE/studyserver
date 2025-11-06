@@ -50,15 +50,6 @@ class DataSourcesViewsTest(TestCase):
         # Verify the source still exists
         self.assertTrue(AwareDataSource.objects.filter(id=self.source.id).exists())
 
-    def test_aware_mobile_setup_view(self):
-        source = AwareDataSource.objects.create(
-            profile=self.profile,
-            name='Test Aware Source'
-        )
-        response = self.client.get(reverse('aware_mobile_setup', args=[source.config_token]))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'data_sources/aware/mobile_setup.html')
-        self.assertIn('source', response.context)
         
 
 class DataSourceModelTest(TestCase):

@@ -205,3 +205,25 @@ def instructions(request, source_id):
     return render(request, template, context)
 
 
+@login_required
+def confirm_data_source(request, source_id):
+    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    real_source = source.get_real_instance()
+
+    success, message = real_source.confirm_device()
+
+    if not success:
+        messages.error(request, message)
+        return redirect('dashboard')
+    
+    messages.success(request, message)
+    return redirect('dashboard')
+
+
+def token_view_dispatcher(request, token, view_type):
+    source = get_object_or_404(DataSource, config_token=token)
+    real_source = source.get_real_instance()
+    
+    return real_source.handle_token_view(request, token, view_type)
+
+

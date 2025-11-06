@@ -1,19 +1,23 @@
+from django.shortcuts import render
+from django.conf import settings
 from django.db import models
 from django.urls import reverse
+from django.http import JsonResponse
 import qrcode
 from .base import DataSource
+from studies.models import Consent
 from . import db_connector
 import uuid
 import qrcode
 import io
 import base64
-
+import requests
 
 
 class AwareDataSource(DataSource):
     
     device_label = models.CharField(max_length=150, unique=True, default=uuid.uuid4)
-    config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    
 
     requires_setup = True
     requires_confirmation = True
@@ -24,7 +28,7 @@ class AwareDataSource(DataSource):
         return base_url
     
     def get_confirm_url(self):
-        base_url = reverse('confirm_aware_source', args=[self.id])
+        base_url = reverse('confirm_data_source', args=[self.id])
         return base_url
 
     @property
@@ -34,8 +38,8 @@ class AwareDataSource(DataSource):
     def get_instructions_card(self, request, consent_id=None, study_id=None):
         mobile_setup_url = request.build_absolute_uri(
             reverse(
-                'aware_mobile_setup',
-                kwargs={'token': self.config_token}
+                'datasource_token_view',
+                kwargs={'token': self.config_token, 'view_type': 'setup'}
             )
         )
         qr_img = qrcode.make(mobile_setup_url)
@@ -68,6 +72,83 @@ class AwareDataSource(DataSource):
         self.status = 'active'
         self.save()
         return (True, "AWARE device confirmed and linked successfully!")
+    
+    def handle_token_view(self, request, token, view_type):
+        if str(self.config_token) != str(token):
+            return (False, "Invalid configuration token.")
+
+        if view_type == "setup":
+            config_url = request.build_absolute_uri(
+                reverse('datasource_token_view', kwargs={'token': self.config_token, 'view_type': 'config'})
+            )
+
+            context = {
+                'source': self,
+                'config_url': config_url,
+                'device_label': self.device_label
+            }
+            return render(
+                request,
+                'data_sources/aware/mobile_setup.html',
+                context
+            )
+        
+        elif view_type == "config":
+            active_consents = Consent.objects.filter(
+                participant=self.profile,
+                data_source_id=self.id,
+                is_complete=True,
+                revocation_date__isnull=True
+            )
+            studies = [consent.study for consent in active_consents]
+            config_json = {
+                "_id": "Aalto RSE studypage",
+                "study_info": {
+                    "study_title": "Polalpha",
+                    "study_description": "Alpha study for POLWELL and POLEMIC",
+                    "researcher_first": "Jarno",
+                    "researcher_last": "Rantaharju",
+                    "researcher_contact": "<jarno.rantaharju@aalto.fi>"
+                },
+                "database": {
+                    "rootPassword": "-",
+                    "rootUsername": "-",
+                    "database_host": settings.AWARE_DB_HOST,
+                    "database_port": settings.AWARE_DB_PORT,
+                    "database_name": settings.AWARE_DB_NAME,
+                    "database_password": settings.AWARE_DB_INSERT_PASSWORD,
+                    "database_username": settings.AWARE_DB_INSERT_USER,
+                    "require_ssl": True,
+                    "config_without_password": False
+                },
+                "createdAt": "",
+                "updatedAt": "2025-09-25T12:30:13.411Z",
+                "questions": [],
+                "schedules": [],
+                "sensors": [
+                    {
+                        "setting": "device_label", "value": self.device_label
+                    }
+                ]
+            }
+            for study in studies:
+                config_filename = study.source_configurations.get('AwareDataSource', "aware_config.json")
+                base_url = study.raw_content_base_url
+                if not base_url:
+                    continue
+                full_config_url = f"{base_url}/{config_filename}"
+                try:
+                    response = requests.get(full_config_url, timeout=5)
+                    response.raise_for_status()
+                    study_config = response.json()
+                    config_json['questions'].extend(study_config.get('questions', []))
+                    config_json['schedules'].extend(study_config.get('schedules', []))
+                    sensors = study_config.get('sensors', [])
+                    config_json['sensors'].extend(sensors)
+                except requests.exceptions.RequestException:
+                    continue
+            return JsonResponse(config_json)
+
     
     def get_data_types(self):
         """  Returns a list of available data type names for this source. """

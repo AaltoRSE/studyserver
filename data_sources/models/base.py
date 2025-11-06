@@ -14,6 +14,7 @@ class DataSource(PolymorphicModel):
     name = models.CharField(max_length=100, help_text="A personal name for this source")
     date_added = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     
     requires_confirmation = False
     requires_setup = False

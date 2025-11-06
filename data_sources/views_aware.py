@@ -3,7 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
-from django.contrib import messages
 from .models import AwareDataSource
 from studies.models import Consent
 import requests
@@ -23,19 +22,6 @@ def aware_mobile_setup(request, token):
         'device_label': source.device_label
     }
     return render(request, 'data_sources/aware/mobile_setup.html', context)
-
-
-@login_required
-def confirm_aware_source(request, source_id):
-    source = get_object_or_404(AwareDataSource, id=source_id, profile=request.user.profile)
-    success, message = source.confirm_device()
-
-    if not success:
-        messages.error(request, message)
-        return redirect('dashboard')
-    
-    messages.success(request, message)
-    return redirect('dashboard')
 
 
 def aware_config_api(request, token):
