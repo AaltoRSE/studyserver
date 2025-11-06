@@ -1,7 +1,5 @@
-import requests
 import uuid
 from django.db import models
-from django.urls import reverse
 from polymorphic.models import PolymorphicModel
 from users.models import Profile
 
