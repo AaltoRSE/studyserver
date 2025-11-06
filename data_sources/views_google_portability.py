@@ -24,7 +24,7 @@ def auth_start(request, source_id):
     source.save()
 
     redirect_url = request.build_absolute_uri(
-        reverse('google_portability_auth_callback')
+        reverse('auth_callback')
     )
     
     params = {
@@ -41,78 +41,6 @@ def auth_start(request, source_id):
     return redirect(auth_url)
 
 
-@login_required
-def auth_callback(request):
-    error = request.GET.get('error')
-    if error:
-        messages.error(request, f"Google authorization failed: {error}")
-        return redirect('dashboard')
-
-    received_state = request.GET.get('state')
-    try:
-        source = GooglePortabilityDataSource.objects.get(
-            oauth_state=received_state,
-            profile=request.user.profile
-        )
-        source.oauth_state = None
-        source.save()
-    except GooglePortabilityDataSource.DoesNotExist:
-        messages.error(request, "Invalid or expired state parameter.")
-        return redirect('dashboard')
-    
-    code = request.GET.get('code')
-    if not code:
-        messages.error(request, "Google authorization failed: No code returned.")
-        return redirect('dashboard')
-
-    token_url = 'https://oauth2.googleapis.com/token'
-    token_data = {
-        'code': code,
-        'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
-        'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
-        'redirect_uri': request.build_absolute_uri(reverse('google_portability_auth_callback')),
-        'grant_type': 'authorization_code',
-    }
-
-    try:
-        response = requests.post(token_url, data=token_data)
-        response.raise_for_status()
-        tokens = response.json()
-
-        source.access_token = tokens['access_token']
-        source.refresh_token = tokens.get('refresh_token', '')
-        expires_in = tokens.get('expires_in')
-        source.token_expiry = timezone.now() + timedelta(seconds=expires_in)
-        source.processing_status = 'authorized'
-        source.save()
-
-        messages.success(request, "Google account linked successfully. You can now confirm and process your data.")
-
-    except requests.RequestException as e:
-        messages.error(request, f"Failed to exchange code for token: {e}")
-    except KeyError as e:
-         messages.error(request, f"Error parsing token response: Missing key {e}")
-
-    # Use the token to get the data
-    api_url = 'https://dataportability.googleapis.com/v1/portabilityArchive:initiate'
-    headers = {'Authorization': f"Bearer {source.access_token}"}
-    body = {'resources': ['myactivity.youtube']}
-    api_response = requests.post(api_url, headers=headers, json=body)
-
-    if api_response.ok:
-        messages.success(request, "Data export initiated successfully.")
-        response_data = api_response.json()
-        job_id = response_data.get('archiveJobId')
-        # append to the list of job IDs
-        job_list = source.data_job_ids or []
-        job_list.append(job_id)
-        source.data_job_ids = job_list
-        source.save()
-        
-    else:
-        messages.error(request, f"Failed to initiate data export: {api_response.text}")
-
-    return redirect('dashboard')
 
 @login_required
 def check_and_get(request, source_id):

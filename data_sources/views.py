@@ -227,3 +227,28 @@ def token_view_dispatcher(request, token, view_type):
     return real_source.handle_token_view(request, token, view_type)
 
 
+@login_required
+def auth_callback(request):
+    state = request.GET.get('state')
+    error = request.GET.get('error')
+
+    if error:
+        messages.error(request, f"Authorization failed: {error}")
+        return redirect('dashboard')
+    
+    if not state:
+        messages.error(request, "Authorization failed: Missing state parameter.")
+        return redirect('dashboard')
+
+    source = DataSource.objects.filter(
+        profile=request.user.profile,
+        oauth_state=state
+    ).first()
+    real_source = source.get_real_instance()
+
+    if real_source:
+        success, message = real_source.handle_auth_callback(request)
+
+
+    return redirect('dashboard')
+
