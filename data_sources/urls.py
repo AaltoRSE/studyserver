@@ -12,6 +12,5 @@ urlpatterns = [
     path('<int:source_id>/confirm/', views.confirm_data_source, name='confirm_data_source'),
     path('config/<uuid:token>/<str:view_type>/', views.token_view_dispatcher, name='datasource_token_view'),
 
-    path('aware/', include('data_sources.urls_aware')),
     path('google/', include('data_sources.urls_google_portability')),
 ]

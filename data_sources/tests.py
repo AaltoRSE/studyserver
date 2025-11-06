@@ -2,7 +2,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
-from .models.base import AwareDataSource, JsonUrlDataSource, Profile
+from .models import AwareDataSource, JsonUrlDataSource, Profile
 import uuid
 
 
