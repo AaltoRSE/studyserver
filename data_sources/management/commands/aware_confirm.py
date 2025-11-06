@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from data_sources.models import AwareDataSource
+from data_sources.models.base import AwareDataSource
 import logging
 
 logger = logging.getLogger(__name__)

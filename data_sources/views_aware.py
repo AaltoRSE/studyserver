@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
 from django.contrib import messages
-from .models import AwareDataSource
+from .models.base import AwareDataSource
 from studies.models import Consent
 import qrcode
 import io

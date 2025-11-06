@@ -8,7 +8,7 @@ from django.contrib import messages
 from urllib.parse import urlencode
 from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
-from .models import DataSource, AwareDataSource, JsonUrlDataSource
+from .models.base import DataSource, AwareDataSource, JsonUrlDataSource
 from studies.models import Consent
 from datetime import date, datetime, time
 
