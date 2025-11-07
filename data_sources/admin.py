@@ -21,7 +21,7 @@ class AwareDataSourceAdmin(PolymorphicChildModelAdmin):
 class GooglePortabilityDataSourceAdmin(PolymorphicChildModelAdmin):
     base_model = DataSource
     show_in_index = True
-    readonly_fields = COMMON_READ_ONLY_FIELDS + ('data_job_ids',)
+    readonly_fields = COMMON_READ_ONLY_FIELDS + ('data_job_ids', 'access_token', 'refresh_token',)
 
 @admin.register(DataSource)
 class DataSourceAdmin(PolymorphicParentModelAdmin):

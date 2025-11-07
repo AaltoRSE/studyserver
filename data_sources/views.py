@@ -91,7 +91,11 @@ def add_data_source(request, source_type):
 @login_required
 def delete_data_source(request, source_id):
     source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    real_source = source.get_real_instance()
     source_name = source.name
+
+    if hasattr(real_source, 'revoke_and_delete'):
+        real_source.revoke_and_delete()
 
     Consent.objects.filter(data_source=source).update(
         data_source=None,
@@ -210,7 +214,7 @@ def confirm_data_source(request, source_id):
     source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
     real_source = source.get_real_instance()
 
-    success, message = real_source.confirm_device()
+    success, message = real_source.confirm_and_download()
 
     if not success:
         messages.error(request, message)
@@ -225,6 +229,15 @@ def token_view_dispatcher(request, token, view_type):
     real_source = source.get_real_instance()
     
     return real_source.handle_token_view(request, token, view_type)
+
+
+@login_required
+def auth_start(request, source_id):
+    source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
+    real_source = source.get_real_instance()
+
+    auth_url = real_source.get_auth_url(request)
+    return redirect(auth_url)
 
 
 @login_required

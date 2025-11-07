@@ -13,6 +13,7 @@ class DataSource(PolymorphicModel):
     device_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     name = models.CharField(max_length=100, help_text="A personal name for this source")
     date_added = models.DateTimeField(auto_now_add=True)
+    
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     config_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     oauth_state = models.CharField(max_length=100, blank=True, null=True)
@@ -31,10 +32,22 @@ class DataSource(PolymorphicModel):
         return "Generic Data"
 
     def get_instructions_card(self, request, consent_id=None, study_id=None):
-        """Returns context and template name for instructions card."""
-        return {}, None
+        """HTML card shown in instructions and dashboard."""
+        return None
+    
+    def get_setup_url(self):
+        """URL to redirect to after creating the source"""
+        return None
+    
+    def revoke_and_delete(self):
+        """Revoke any permissions and delete the source."""
+        pass
 
     def get_confirm_url(self):
+        return None
+    
+    def confirm_and_download(self):
+        """Confirm the source and download any initial data if needed."""
         return None
 
     def get_data_types(self):

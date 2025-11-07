@@ -5,8 +5,10 @@ from django.contrib import messages
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
+import os
 import requests
-from urllib3 import request
+import secrets
+from urllib.parse import urlencode
 from .base import DataSource
 
 
@@ -18,8 +20,8 @@ class GooglePortabilityDataSource(DataSource):
         ('error', 'Error during processing'),
     )
     downloaded_files = models.JSONField(default=list, blank=True)
-    access_token = models.CharField(max_length=500, blank=True)
-    refresh_token = models.CharField(max_length=500, blank=True)
+    access_token = models.CharField(max_length=500, blank=True, null=True)
+    refresh_token = models.CharField(max_length=500, blank=True, null=True)
     token_expiry = models.DateTimeField(null=True, blank=True)
     google_user_id = models.CharField(max_length=255, blank=True, unique=True, null=True)
     processing_status = models.CharField(
@@ -34,10 +36,16 @@ class GooglePortabilityDataSource(DataSource):
     requires_confirmation = True
 
     def get_setup_url(self):
-        return reverse('google_portability_auth_start', args=[self.id])
+        return reverse('auth_start', args=[self.id])
 
     def get_confirm_url(self):
-        return reverse('google_portability_check_and_get', args=[self.id])
+        return reverse('auth_callback', args=[self.id])
+    
+    def get_instructions_card(self, request):
+        # Returns "Authorize with Google" button for dashboard
+        return {
+            'auth_url': reverse('auth_start', args=[self.id])
+        }, 'data_sources/google/instructions_card.html'
 
     @property
     def display_type(self):
@@ -55,10 +63,30 @@ class GooglePortabilityDataSource(DataSource):
         return []
 
     def start_processing(self):
-        self.processing_status = 'processing'
         self.save()
         print(f"Triggering background task for GooglePortabilityDataSource ID {self.id}")
 
+    def get_auth_url(self, request):
+        state_token = secrets.token_urlsafe(16)
+        self.oauth_state = state_token
+        self.save()
+
+        redirect_url = request.build_absolute_uri(
+            reverse('auth_callback')
+        )
+
+        params = {
+            'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+            'redirect_uri': redirect_url,
+            'response_type': 'code',
+            'scope': 'https://www.googleapis.com/auth/dataportability.myactivity.youtube',
+            'access_type': 'offline',
+            'state': state_token,
+            'prompt': 'consent',
+        }
+        auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
+        return auth_url
+    
 
     def handle_auth_callback(self, request):
         code = request.GET.get('code')
@@ -94,7 +122,7 @@ class GooglePortabilityDataSource(DataSource):
 
         # Use the token to get the data
         api_url = 'https://dataportability.googleapis.com/v1/portabilityArchive:initiate'
-        headers = {'Authorization': f"Bearer {access_token}"}
+        headers = {'Authorization': f"Bearer {self.access_token}"}
         body = {'resources': ['myactivity.youtube']}
         api_response = requests.post(api_url, headers=headers, json=body)
 
@@ -112,3 +140,113 @@ class GooglePortabilityDataSource(DataSource):
             return False, "Failed to initiate data export."
 
         return True, "Authorization successful."
+    
+    def refresh_access_token(self):
+        if not self.refresh_token:
+            return False, "No refresh token available."
+
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'refresh_token': self.refresh_token,
+            'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+            'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
+            'grant_type': 'refresh_token',
+        }
+
+        try:
+            response = requests.post(token_url, data=token_data)
+            response.raise_for_status()
+            tokens = response.json()
+
+            self.access_token = tokens['access_token']
+            expires_in = tokens.get('expires_in')
+            self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
+            self.save()
+            return True, "Token refreshed successfully."
+
+        except requests.RequestException as e:
+            return False, f"Token refresh failed: {e}"
+        except KeyError as e:
+            return False, f"Error parsing token response: Missing key {e}"
+    
+    def revoke_and_delete(self):
+        # Revoke Google OAuth token
+        self.refresh_access_token()
+        if self.access_token:
+            revoke_url = 'https://dataportability.googleapis.com/v1/authorization:reset'
+            headers = {
+                'Authorization': f"Bearer {self.access_token}",
+                'Content-Type': 'application/json'
+            }
+
+            try:
+                response = requests.post(revoke_url, headers=headers)
+                response.raise_for_status()
+                print(f"Successfully revoked Google OAuth token for DataSource ID {self.id}")
+            except requests.RequestException as e:
+                print(f"Failed to revoke Google OAuth token for DataSource ID {self.id}: {e}")
+        
+        self.cleanup_files()
+
+    def confirm_and_download(self, request):
+        # Check if the data export jobs are completed and download files for processing
+        self.refresh_access_token()
+        if not self.access_token:
+            messages.error(request, "Error fetching data. Please re-authorize the Google account.")
+            return redirect('dashboard')
+        
+        token_url = 'https://oauth2.googleapis.com/token'
+        token_data = {
+            'refresh_token': self.refresh_token,
+            'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
+            'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
+            'grant_type': 'refresh_token',
+        }
+
+        try:
+            token_response = requests.post(token_url, data=token_data)
+            token_response.raise_for_status()
+            tokens = token_response.json()
+            access_token = tokens['access_token']
+            
+            headers = {'Authorization': f"Bearer {access_token}"}
+            job_ids = self.data_job_ids
+            if not job_ids:
+                messages.error(request, "No data export jobs found. Please initiate a data export first.")
+                return redirect('dashboard')
+            for job_id in job_ids:
+                api_url = f'https://dataportability.googleapis.com/v1/archiveJobs/{job_id}/portabilityArchiveState'
+                api_response = requests.get(api_url, headers=headers)
+                status_data = api_response.json()
+                print("Data export status:", status_data)
+                if status_data.get('state') != 'COMPLETED':
+                    messages.info(request, "Data export is still processing. Please check back later.")
+                    return redirect('dashboard')
+
+                download_urls = status_data.get('urls', [])
+                for i, url in enumerate(download_urls):
+                    file_response = requests.get(url)
+
+                    with open(f'data/google_data_{job_id}_{i}.zip', 'wb') as f:
+                        f.write(file_response.content)
+                self.downloaded_files.append(f'data/google_data_{job_id}_{i}.zip')
+                self.processing_status = 'processing'
+                self.save()
+
+        except requests.RequestException as e:
+            messages.error(request, f"Error during data retrieval: {e}")
+        except KeyError as e:
+            messages.error(request, f"Error parsing data retrieval response: Missing key {e}")
+        except Exception as e:
+            messages.error(request, f"Unexpected error: {e}")
+        
+
+    def cleanup_files(self):
+        # Delete downloaded files from storage
+        for filepath in self.downloaded_files:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+        
+        self.processed_files = []
+        self.save()
+    

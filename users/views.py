@@ -112,7 +112,8 @@ def dashboard(request):
         else:
             if consent.data_source:
                 source = consent.data_source.get_real_instance()
-                if source.status == 'pending' and (source.requires_setup or source.requires_confirmation):
+                instructions = source.get_instructions_card(request, consent_id=consent.id, study_id=study.id)
+                if source.status == 'pending' and instructions:
                     studies_data[study]['incomplete_sources'].append({
                         'consent': consent,
                         'source': source,
