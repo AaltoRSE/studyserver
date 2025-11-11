@@ -16,6 +16,15 @@ from studies.forms import DataSourceSelectionForm
 from .forms import CustomUserCreationForm
 from studies.models import Consent
 
+
+
+def terms_of_service(request):
+    return render(request, 'terms_of_service.html')
+
+def privacy_statement(request):
+    return render(request, 'privacy_statement.html')
+
+
 def signup(request):
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)

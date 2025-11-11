@@ -1,51 +1,69 @@
-1. Introduction
-This platform facilitates research data donation from participants to Aalto University researchers. By using this platform, you agree to the following terms and conditions.
+{% extends "base.html" %}
 
-Participants understand their data will be used for academic research as described in the Privacy Statement
+{% block title %} Terms of Service {% endblock %}
 
-Researchers agree to use the donated data solely for research purposes and in accordance with ethical guidelines.
+{% block content %}
+<h1>Terms of Service for Data Donation Platform</h1>
 
-Please note that Aalto may occasionally change these guidelines due to service development. Any updates will be communicated by updating the aalto.fi page.
+<ol>
+<li>
+    Introduction
+    <p>This platform facilitates research data donation from participants to Aalto University researchers. By using this platform, you agree to the following terms and conditions.</p>
+    <p>Participants understand their data will be used for academic research as described in the <a href="{% url 'privacy_statement' %}">Privacy Statement</a>.</p>
+    <p>Researchers agree to use the donated data solely for research purposes and in accordance with ethical guidelines.</p>
+    <p>Please note that Aalto may occasionally change these guidelines due to service development. Any updates will be communicated by updating this page.</p>
+</li>
 
+<li>
+    <p>Eligibility</p>
 
-2. Eligibility
+    <p>The data donation platform is available to participants in research studies conducted by Aalto University researchers.</p>
 
-The data donation platform is available to participants in research studies conducted by Aalto University researchers.
+    <p>If you are under the age of 16, you confirm that you have your guardian's consent to use this service.</p>
 
-If you are under the age of 16 you confirm that you have your guardian's consent to use this service.
+    <p>Researchers must be affiliated with Aalto University or approved partner institutions.</p>
+</li>
 
-Researchers must be affiliated with Aalto University or approved partner institutions.
+<li>
+    Data Use and Restrictions
+    <ol>
+        <li>
+            <p>Permitted Uses:</p>
+            <p>Researchers may use participant data for any legitimate academic research, including research not specified at enrollment.</p>
+        </li>
+        <li>
+            <p>Prohibited Uses:</p>
+            <p>Researchers may not commercially exploit, sell, or redistribute participant personal data.</p>
+        </li>
+    </ol>
+</li>
 
+<li>
+   <p>Data Storage & Retention</p>
+   <p>Refer to Privacy Statement for data retention periods and deletion procedures.</p>
+    <p>Upon participant withdrawal, data collection ceases immediately and identifiers are deleted within 30 days.</p>
+   <p>Refer to Privacy Statement for data retention periods and deletion procedures.</p>
+   <p>Upon participant withdrawal, data collection ceases immediately and identifiers are deleted within 30 days.</p>
+</li>
 
-3. Data Use and Restrictions
-3.1 Permitted Uses:
+<li>
+   <p>Participant Withdrawal</p>
 
-Researchers may use participant data for any legitimate academic research, including research not specified at enrollment.
+   <p>Participants may withdraw from any study at any time. Withdrawal stops data collection immediately and triggers data deletion per Privacy Statement timelines.</p>
 
-3.2 Prohibited Uses:
+   <p>Contact Aalto RSEs (rse@aalto.fi) for assistance in withdrawing from studies.</p>
+</li>
 
-Researchers may not commercially exploit, sell, or redistribute participant personal data.
+<li>6. Researcher Obligations
+   <p>Researchers agree to process data only for approved research purposes and to comply with Aalto's research ethics policies and GDPR.</p>
+   <p>Researchers agree to institutional oversight and data auditing.</p>
+</li>
 
-4. Data Storage & Retention
-Refer to Privacy Statement for data retention periods and deletion procedures.
+<li>7. Compliance and Enforcement
+    <p>Researchers must adhere to these terms and Aalto's research ethics policies.</p>
+    <p>Violations may result in revocation of access or termination of data collection.</p>
+</li>
 
-Upon participant withdrawal, data collection ceases immediately and identifiers are deleted within 30 days.
-
-5. Participant Withdrawal
-
-Participants may withdraw from any study at any time. Withdrawal stops data collection immediately and triggers data deletion per Privacy Statement timelines.
-
-Contact Aalto RSEs (rse@aalto.fi) for assistance in withdrawing from studies.
-
-6. Researcher Obligations
-
-Researchers agree to process data only for approved research purposes and to comply with Aalto's research ethics policies and GDPR.
-
-Researchers agree to institutional oversight and data auditing.
-
-7. Compliance and Enforcement
-
-Aalto University reserves the right to revoke researcher access or terminate data collection for violations of these terms or research ethics policies.
-
-8. Contact Information
-Contact Aalto RSEs (rse@aalto.fi) for more information or assistance regarding these terms of service.
+<li>8. Contact Information
+    <p>Contact Aalto RSEs (rse@aalto.fi) for more information or assistance regarding these terms of service.</p>
+</li>

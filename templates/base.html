@@ -29,5 +29,10 @@
     {% endif %}
     
     {% block content %}{% endblock %}
+
+    <footer style="margin-top: 40px; padding: 20px; border-top: 1px solid #ccc; text-align: center;">
+        <a href="{% url 'privacy_statement' %}">Privacy Statement</a> | 
+        <a href="{% url 'terms_of_service' %}">Terms of Service</a>
+    </footer>
 </body>
 </html>
