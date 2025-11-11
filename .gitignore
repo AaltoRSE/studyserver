@@ -16,3 +16,6 @@ study_server/local_settings.py
 
 # Data
 data/
+
+# Automation
+celerybeat-schedule*
