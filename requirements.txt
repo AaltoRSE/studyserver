@@ -7,3 +7,4 @@ mysql-connector-python
 qrcode[pil]
 djangorestframework
 niimpy
+celery

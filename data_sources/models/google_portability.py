@@ -239,7 +239,11 @@ class GooglePortabilityDataSource(DataSource):
             messages.error(request, f"Error parsing data retrieval response: Missing key {e}")
         except Exception as e:
             messages.error(request, f"Unexpected error: {e}")
-        
+    
+    def process(self):
+        # Process and store downloaded data
+        return None
+    
 
     def cleanup_files(self):
         # Delete downloaded files from storage
