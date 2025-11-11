@@ -1,9 +1,9 @@
-import celery as shared_task
+from celery import shared_task
 from .models import DataSource
 
 
 @shared_task
-def process_data_source():
+def process_data_sources():
     """ Run data source processing tasks
     """
     data_sources = DataSource.objects.all()

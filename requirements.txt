@@ -8,3 +8,4 @@ qrcode[pil]
 djangorestframework
 niimpy
 celery
+redis

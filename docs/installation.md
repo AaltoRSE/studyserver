@@ -73,3 +73,12 @@ sudo nginx -t
 sudo systemctl restart nginx
 sudo ufw allow 'Nginx Full'
 ```
+
+
+# Install Redis
+
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl start redis-server
+```
