@@ -1,6 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.contrib.admin.views.decorators import staff_member_required
 from django.template import engines
 from django.contrib import messages
 from django.template.loader import get_template
@@ -26,14 +25,14 @@ def join_study(request, study_id):
     profile = request.user.profile
 
     for required_type in study.required_data_sources:
-        Consent.objects.get_or_create(
+        Consent.objects.create(
             participant=profile,
             study=study,
             source_type=required_type,
         )
 
     for optional_type in study.optional_data_sources:
-        Consent.objects.get_or_create(
+        Consent.objects.create(
             participant=profile,
             study=study,
             source_type=optional_type,
@@ -64,7 +63,7 @@ def withdraw_from_study(request, study_id):
         messages.success(request, f"You have successfully withdrawn from the study '{study.title}'.")
         return redirect('dashboard')
     
-    return render(request, 'studies/withdraw_confirmation.html', {'study': study})
+    return render(request, 'studies/withdraw.html', {'study': study})
 
 
 def study_detail(request, study_id):

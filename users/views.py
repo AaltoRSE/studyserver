@@ -89,8 +89,18 @@ def dashboard(request):
     if request.user.profile.user_type == 'researcher':
         return redirect('researcher_dashboard')
 
-    all_consents = Consent.objects.filter(participant=request.user.profile)
     context = {}
+
+    past_consents = Consent.objects.filter(
+        participant=request.user.profile,
+        revocation_date__isnull=False
+    )
+    context['past_consents'] = past_consents
+
+    all_consents = Consent.objects.filter(
+        participant=request.user.profile,
+        revocation_date__isnull=True
+    )
 
     studies_data = {}
     for consent in all_consents.exclude(revocation_date__isnull=False):

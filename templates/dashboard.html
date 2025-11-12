@@ -12,13 +12,15 @@
         </div>
     {% endfor %}
     <hr>
+{% else %}
+    <p>You are not currently enrolled in any studies.</p>
 {% endif %}
 
 {% if past_consents %}
     <h2>Past Studies</h2>
     <ul>
         {% for consent in past_consents %}
-            <li>{{ consent.study.title }} (Withdrawn on {{ consent.revocation_date|date:"Y-m-d" }})</li>
+            <li>{{ consent.study.title }}: {{ consent.source_type }} (Withdrawn on {{ consent.revocation_date|date:"Y-m-d" }})</li>
         {% endfor %}
     </ul>
     <hr>

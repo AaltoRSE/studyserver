@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.contrib import messages
+from django.template.loader import render_to_string
 from urllib.parse import urlencode
 from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
@@ -210,13 +211,15 @@ def instructions(request, source_id):
         else:
             study_id = None
     
-    context, template = real_source.get_instructions_template(request, consent_id, study_id)
+    context, template = real_source.get_instructions_card(request, consent_id, study_id)
 
-    context = {
-        'study_id': study_id,
-        'instructions_context': context
-    }
-    return render(request, template, context)
+    return render(request,
+        'data_sources/instructions_wrapper.html',
+        {
+            'instructions_context': context,
+            'instructions_template': template,
+        }
+    )
 
 
 @login_required

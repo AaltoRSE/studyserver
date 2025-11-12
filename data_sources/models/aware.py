@@ -24,7 +24,7 @@ class AwareDataSource(DataSource):
 
 
     def get_setup_url(self):
-        base_url = reverse('aware_instructions', args=[self.id])
+        base_url = reverse('instructions', args=[self.id])
         return base_url
     
     def get_confirm_url(self):
