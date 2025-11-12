@@ -8,6 +8,7 @@ from django.utils.safestring import mark_safe
 from django.urls import reverse
 from urllib.parse import urlencode
 from django.http import JsonResponse
+from django.utils import timezone
 
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
@@ -52,9 +53,11 @@ def withdraw_from_study(request, study_id):
         consents = Consent.objects.filter(
             participant=profile,
             study=study,
+            revocation_date__isnull=True
         )
         for consent in consents:
-            consent.revocation_date = services.get_current_time()
+            consent.data_source = None
+            consent.revocation_date = timezone.now()
             consent.is_complete = False
             consent.save()
         

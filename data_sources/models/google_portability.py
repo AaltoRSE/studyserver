@@ -169,7 +169,7 @@ class GooglePortabilityDataSource(DataSource):
         except KeyError as e:
             return False, f"Error parsing token response: Missing key {e}"
     
-    def revoke_and_delete(self):
+    def revoke_before_delete(self):
         # Revoke Google OAuth token
         self.refresh_access_token()
         if self.access_token:

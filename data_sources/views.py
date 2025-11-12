@@ -94,14 +94,24 @@ def delete_data_source(request, source_id):
     real_source = source.get_real_instance()
     source_name = source.name
 
-    if hasattr(real_source, 'revoke_and_delete'):
-        real_source.revoke_and_delete()
-
-    Consent.objects.filter(data_source=source).update(
-        data_source=None,
-        is_complete=False,
-        consent_text_accepted=False
+    active_consents = Consent.objects.filter(
+        data_source=source,
+        revocation_date__isnull=True
     )
+    
+    if active_consents.exists():
+        studies_list = ', '.join([c.study.title for c in active_consents])
+        messages.error(
+            request, 
+            f"Cannot delete '{source_name}': Still linked to active studies: {studies_list}. "
+            f"Withdraw from those studies first."
+        )
+        return redirect('dashboard')
+
+    if hasattr(real_source, 'revoke_before_delete'):
+        real_source.revoke_before_delete()
+
+    Consent.objects.filter(data_source=source).update(data_source=None)
 
     source.delete()
     messages.success(request, f"Successfully deleted data source: {source_name}")

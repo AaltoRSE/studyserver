@@ -43,7 +43,7 @@ class DataSource(PolymorphicModel):
         """URL to redirect to after creating the source"""
         return None
     
-    def revoke_and_delete(self):
+    def revoke_before_delete(self):
         """Revoke any permissions and delete the source."""
         pass
 

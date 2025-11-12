@@ -25,6 +25,13 @@ class ConsentAdmin(admin.ModelAdmin):
         'revocation_date'
     )
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        
+        return qs.filter(study__researchers=request.user.profile)
+
     def get_readonly_fields(self, request, obj=None):
         if request.user.is_superuser:
             return ('participant', 'study', 'source_type', 'consent_date')
@@ -96,6 +103,7 @@ class StudyAdmin(admin.ModelAdmin):
         qs = super().get_queryset(request)
         if request.user.is_superuser:
             return qs
+        
         return qs.filter(researchers=request.user.profile)
 
     def get_form(self, request, obj=None, **kwargs):
