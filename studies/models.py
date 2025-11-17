@@ -24,6 +24,15 @@ class Study(models.Model):
         blank=True,
         help_text="List of optional source types, e.g., ['JsonUrlDataSource']"
     )
+
+    domain = models.CharField(
+        max_length=200,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Domain name of the study's landing page"
+    )
+
     config_url = models.URLField(max_length=500, help_text="URL for fetching study configuration")
     source_configurations = models.JSONField(
         default=dict,

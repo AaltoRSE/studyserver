@@ -150,6 +150,7 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_WORKER_CONCURRENCY = 1
 CELERY_BEAT_SCHEDULE = {
     'check-google-exports': {
         'task': 'data_sources.tasks.process_data_sources',

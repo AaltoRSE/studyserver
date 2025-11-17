@@ -102,7 +102,7 @@ class AwareDataSource(DataSource):
             )
             studies = [consent.study for consent in active_consents]
             config_json = {
-                "_id": "Aalto RSE studypage",
+                "_id": "PolAlpha",
                 "study_info": {
                     "study_title": "Polalpha",
                     "study_description": "Alpha study for POLWELL and POLEMIC",

@@ -15,7 +15,21 @@ from studies.models import Study, Consent
 from studies.forms import DataSourceSelectionForm
 from .forms import CustomUserCreationForm
 from studies.models import Consent
+from studies.views import study_detail
 
+
+
+def home(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    
+    host = request.get_host().split(':')[0]
+    try:
+        study = Study.objects.get(domain=host)
+        return study_detail(request, study.id)
+    
+    except Study.DoesNotExist:
+        return render(request, 'home.html')
 
 
 def terms_of_service(request):
@@ -77,12 +91,6 @@ def manage_token(request):
         'is_researcher': request.user.profile.user_type == 'researcher',
     }
     return render(request, 'users/manage_token.html', context)
-
-
-def home(request):
-    if request.user.is_authenticated:
-        return redirect('dashboard')
-    return render(request, 'home.html')
 
 @login_required
 def dashboard(request):
