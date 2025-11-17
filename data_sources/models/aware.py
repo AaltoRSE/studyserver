@@ -55,7 +55,7 @@ class AwareDataSource(DataSource):
         }
         return context, 'data_sources/aware/instructions_card.html'
 
-    def confirm_and_download(self):
+    def confirm(self, request):
         if self.status == 'active':
             return (True, "This device is already active.")
 

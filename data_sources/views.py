@@ -227,7 +227,7 @@ def confirm_data_source(request, source_id):
     source = get_object_or_404(DataSource, id=source_id, profile=request.user.profile)
     real_source = source.get_real_instance()
 
-    success, message = real_source.confirm_and_download()
+    success, message = real_source.confirm_and_download(request)
 
     if not success:
         messages.error(request, message)

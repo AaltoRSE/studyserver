@@ -50,7 +50,7 @@ class DataSource(PolymorphicModel):
     def get_confirm_url(self):
         return None
     
-    def confirm_and_download(self):
+    def confirm(self, request):
         """Confirm the source and download any initial data if needed."""
         return None
     

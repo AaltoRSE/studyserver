@@ -69,18 +69,40 @@ class GooglePortabilityDataSource(DataSource):
 
     def get_data_types(self):
         # Placeholder, I know we will at least have YouTube History
-        if self.processing_status == 'processed':
+        if self.processing_status in ['processed', 'processing']:
             return ['youtube_history'] 
         return []
 
     def fetch_data(self, data_type, limit=1000, start_date=None, end_date=None):
-        if self.processing_status == 'processed':
+        if self.processing_status in ['processed', 'processing']:
             return [{"info": f"Data for {data_type} would be fetched here."}]
-        return []
+
+        if data_type != 'youtube_history':
+            return []
+        
+        try:
+            df = pd.read_csv(self.CSV_OUTPUT_PATH)
+            df = df[df['device_id'] == str(self.device_id)]
+
+            if start_date:
+                df = df[df['timestamp'] >= start_date.timestamp() * 1000]
+            if end_date:
+                df = df[df['timestamp'] <= end_date.timestamp() * 1000]
+
+            df = df.head(limit)
+            return df.to_dict('records')
+
+        except FileNotFoundError:
+            return []
+        except Exception as e:
+            print(f"Error fetching YouTube data: {e}")
+            return []
+
 
     def start_processing(self):
         self.save()
         print(f"Triggering background task for GooglePortabilityDataSource ID {self.id}")
+
 
     def get_auth_url(self, request):
         state_token = secrets.token_urlsafe(16)
@@ -264,7 +286,7 @@ class GooglePortabilityDataSource(DataSource):
         except Exception as e:
             return False, f"Unexpected error during data retrieval: {e}"
 
-    def confirm_and_download(self, request):
+    def confirm(self, request):
         """User-facing method with messages and redirects."""
         success, message = self.download_data_files()
         
@@ -325,12 +347,11 @@ class GooglePortabilityDataSource(DataSource):
             self.save()
             return
             
-    
 
     def process(self):
         """ Get any available data and process it.
         """
-        self.confirm_and_download()
+        self.download_data_files()
         self.extract_and_process()
     
 
