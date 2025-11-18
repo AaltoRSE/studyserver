@@ -1,5 +1,5 @@
 from django import forms
-from .models import JsonUrlDataSource, AwareDataSource, GooglePortabilityDataSource
+from .models import JsonUrlDataSource, AwareDataSource, GooglePortabilityDataSource, TikTokPortabilityDataSource
 
 class JsonUrlDataSourceForm(forms.ModelForm):
     class Meta:
@@ -15,6 +15,12 @@ class GooglePortabilityDataSourceForm(forms.ModelForm):
     class Meta:
         model = GooglePortabilityDataSource
         fields = ['name']
+
+class TikTokPortabilityDataSourceForm(forms.ModelForm):
+    class Meta:
+        model = TikTokPortabilityDataSource
+        fields = ['name']
+
 
 class DataFilterForm(forms.Form):
     data_type = forms.ChoiceField(choices=[])
