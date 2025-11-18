@@ -139,6 +139,8 @@ AWARE_DB_RO_PASSWORD = env('AWARE_DB_RO_PASSWORD', default='password')
 
 GOOGLE_OAUTH_CLIENT_ID = env('GOOGLE_OAUTH_CLIENT_ID', default='')
 GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
+TIKTOK_CLIENT_KEY = env('TIKTOK_CLIENT_KEY', default='')
+TIKTOK_CLIENT_SECRET = env('TIKTOK_CLIENT_SECRET', default='')
 
 
 # Processing task automation
