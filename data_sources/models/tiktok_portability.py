@@ -1,10 +1,11 @@
 from django.db import models
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.contrib import messages
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
+import hashlib
+import base64
 import requests
 import secrets
 from urllib.parse import urlencode
@@ -24,6 +25,7 @@ class TikTokPortabilityDataSource(DataSource):
     refresh_token = models.CharField(max_length=500, blank=True, null=True)
     token_expiry = models.DateTimeField(null=True, blank=True)
     tiktok_user_id = models.CharField(max_length=255, blank=True, unique=True, null=True)
+    code_verifier = models.CharField(max_length=200, blank=True)
 
     processing_status = models.CharField(
         max_length=20,
@@ -39,12 +41,15 @@ class TikTokPortabilityDataSource(DataSource):
     def display_type(self):
         return "TikTok Portability Data"
 
-    def get_setup_url(self, request):
+    def get_setup_url(self):
         return reverse('auth_start', args=[self.id])
+    
+    def get_confirm_url(self):
+        return reverse('auth_callback', args=[self.id])
     
     def get_data_types(self):
         return ['tiktok_portability']
-    
+
     def fetch_data(self, data_type, limit=1000, start_date=None, end_date=None):
         if data_type != 'tiktok_portability':
             return []
@@ -58,40 +63,60 @@ class TikTokPortabilityDataSource(DataSource):
             'fetched_at': timezone.now(),
         }]
     
-    def get_auth_token(self, request):
-        state_token = secrets.token_urlsafe(16)
-        self.oauth_state_token = state_token
+
+    @staticmethod
+    def generate_pkce_pair():
+        """Generate PKCE code_verifier and code_challenge."""
+        # Generate random code verifier (43-128 chars)
+        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8')
+        code_verifier = code_verifier.replace('=', '')
+        
+        # Create code challenge: base64-url-encoded SHA256 hash
+        code_sha = hashlib.sha256(code_verifier.encode('utf-8')).digest()
+        code_challenge = base64.urlsafe_b64encode(code_sha).decode('utf-8').replace('=', '')
+        
+        return code_verifier, code_challenge
+
+
+    def get_auth_url(self, request):
+        code_verifier, code_challenge = self.generate_pkce_pair()
+        self.code_verifier = code_verifier
+        self.oauth_state = secrets.token_urlsafe(16)
         self.save()
 
         redirect_url = request.build_absolute_uri(
-            reverse('auth_callback', args=[self.id])
+            reverse('auth_callback')
         )
 
         params = {
             'client_key': settings.TIKTOK_CLIENT_KEY,
             'response_type': 'code',
-            'scope': 'user.info.basic,user.data.basic',
+            'scope': 'user.info.basic',
             'redirect_uri': redirect_url,
-            'state': state_token,
+            'state': self.oauth_state,
+            'code_challenge': code_challenge,
+            'code_challenge_method': 'S256',
         }
 
-        auth_url = f"https://sandbox.tiktok.com/auth/authorize/?{urlencode(params)}"
-        return redirect(auth_url)
+        auth_url = f"https://www.tiktok.com/v2/auth/authorize?{urlencode(params)}"
+        return auth_url
     
     def handle_auth_callback(self, request):
         code = request.GET.get('code')
         if not code:
             return False, "Authorization code not provided."
         
-        token_url = 'https://sandbox.tiktok.com/auth/token/'
+        if not self.code_verifier:
+            return False, "Missing code verifier. Authorization may have expired."
+
+        token_url = 'https://open.tiktokapis.com/v2/oauth/token/'
         token_data = {
+            'code': code,
             'client_key': settings.TIKTOK_CLIENT_KEY,
             'client_secret': settings.TIKTOK_CLIENT_SECRET,
-            'code': code,
+            'redirect_uri': request.build_absolute_uri(reverse('auth_callback')),
             'grant_type': 'authorization_code',
-            'redirect_uri': request.build_absolute_uri(
-                reverse('auth_callback')
-            ),
+            'code_verifier': self.code_verifier,
         }
 
         try:
@@ -105,6 +130,7 @@ class TikTokPortabilityDataSource(DataSource):
             self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
             self.tiktok_user_id = token_info['data']['open_id']
             self.processing_status = 'authorized'
+            self.code_verifier = ''
             self.save()
             return True, "Authorization successful."
         

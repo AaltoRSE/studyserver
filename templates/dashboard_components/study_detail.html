@@ -36,7 +36,7 @@ You have enrolled in {{ study.title }}.
         <ul>
         {% for opt_item in data.optional_consents %}
             <li>
-                Setup {{ opt_item.consent.source_type }}: <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">here</a>
+                Setup {{ opt_item.type_name }}: <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">here</a>
             </li>
         {% endfor %}
         </ul>

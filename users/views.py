@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Group
+from django.apps import apps
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -20,16 +21,23 @@ from studies.views import study_detail
 
 
 def home(request):
-    if request.user.is_authenticated:
-        return redirect('dashboard')
-    
     host = request.get_host().split(':')[0]
     try:
         study = Study.objects.get(domain=host)
-        return study_detail(request, study.id)
-    
     except Study.DoesNotExist:
         return render(request, 'home.html')
+    
+    if request.user.is_authenticated:
+        user_in_study = Consent.objects.filter(
+            study=study,
+            participant=request.user.profile,
+            revocation_date__isnull=True
+        ).exists()
+        if user_in_study:
+            print("User is in study")
+            return redirect('dashboard')
+    
+    return study_detail(request, study_id=study.id)
 
 
 def terms_of_service(request):
@@ -103,7 +111,18 @@ def dashboard(request):
         participant=request.user.profile,
         revocation_date__isnull=False
     )
-    context['past_consents'] = past_consents
+    context['past_consents'] = []
+    for consent in past_consents:
+        model_name = consent.source_type
+        try:
+            ModelClass = apps.get_model('data_sources', model_name)
+            display_type = ModelClass.display_type.fget(None)
+        except (LookupError, AttributeError):
+            display_type = consent.source_type
+        context['past_consents'].append({
+            'consent': consent,
+            'type_name': display_type,
+        })
 
     all_consents = Consent.objects.filter(
         participant=request.user.profile,
@@ -121,17 +140,25 @@ def dashboard(request):
                 'optional_consents': []
             }
 
+        model_name = consent.source_type
+        try:
+            ModelClass = apps.get_model('data_sources', model_name)
+            display_type = ModelClass.display_type.fget(None)
+        except (LookupError, AttributeError):
+            display_type = consent.source_type
+
         if consent.is_optional:
             if consent.data_source:
                 source = consent.data_source.get_real_instance()
             else:
                 source = None
+            
             studies_data[study]['optional_consents'].append({
                 'consent': consent,
                 'source': source,
+                'type_name': display_type,
             })
         elif not consent.is_complete:
-            display_type = consent.source_type
             studies_data[study]['incomplete_consents'].append({
                 'consent': consent,
                 'type_name': display_type,

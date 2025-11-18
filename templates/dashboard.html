@@ -19,8 +19,8 @@
 {% if past_consents %}
     <h2>Past Studies</h2>
     <ul>
-        {% for consent in past_consents %}
-            <li>{{ consent.study.title }}: {{ consent.source_type }} (Withdrawn on {{ consent.revocation_date|date:"Y-m-d" }})</li>
+        {% for item in past_consents %}
+            <li>{{ item.consent.study.title }}: {{ item.type_name }} (Withdrawn on {{ item.consent.revocation_date|date:"Y-m-d" }})</li>
         {% endfor %}
     </ul>
     <hr>

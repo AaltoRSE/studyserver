@@ -51,22 +51,16 @@ class GooglePortabilityDataSource(DataSource):
         help_text="Maps filepath to {'processed': bool, 'processed_at': timestamp}"
     )
 
+    @property
+    def display_type(self):
+        return "Google Portability Data"
+
     def get_setup_url(self):
         return reverse('auth_start', args=[self.id])
 
     def get_confirm_url(self):
         return reverse('auth_callback', args=[self.id])
     
-    def get_instructions_card(self, request):
-        # Returns "Authorize with Google" button for dashboard
-        return {
-            'auth_url': reverse('auth_start', args=[self.id])
-        }, 'data_sources/google/instructions_card.html'
-
-    @property
-    def display_type(self):
-        return "Google Portability Data"
-
     def get_data_types(self):
         # Placeholder, I know we will at least have YouTube History
         if self.processing_status in ['processed', 'processing']:
@@ -99,11 +93,6 @@ class GooglePortabilityDataSource(DataSource):
             return []
 
 
-    def start_processing(self):
-        self.save()
-        print(f"Triggering background task for GooglePortabilityDataSource ID {self.id}")
-
-
     def get_auth_url(self, request):
         state_token = secrets.token_urlsafe(16)
         self.oauth_state = state_token
@@ -125,7 +114,6 @@ class GooglePortabilityDataSource(DataSource):
         auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
         return auth_url
     
-
     def handle_auth_callback(self, request):
         code = request.GET.get('code')
         if not code:
