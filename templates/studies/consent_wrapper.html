@@ -4,6 +4,9 @@
 {% autoescape off %}
     {{ content }}
 {% endautoescape %}
+
+<br/>
+<a href="{% url 'dashboard' %}" class="btn btn-primary">Go to Dashboard</a>
 {% endblock %}
 
 {% if scroll_to %}

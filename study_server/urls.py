@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from users import views as user_views
+from study_server import views as study_server_views
 
 
 urlpatterns = [
@@ -26,4 +27,5 @@ urlpatterns = [
     path('accounts/', include('users.urls')),
     path('studies/', include('studies.urls')),
     path('data-sources/', include('data_sources.urls')),
+    path('download/<path:file_path>/', study_server_views.download_static_file, name='download_static_file'),
 ]
