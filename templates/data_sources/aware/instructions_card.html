@@ -1,12 +1,13 @@
 
 {% block content %}
 
-<ol>
-    <li>Install the AWARE Client app on your phone.</li>
-    <li>Scan the QR code below with your phone's camera to open a setup page on your phone.
-        <img src="data:image/png;base64,{{ instructions_context.qr_code_image }}" alt="QR Code" style="display: block; margin: 10px 0;">
+<ul>
+    <li>
+    Scan the QR code below with your phone's camera to open a setup page on your phone.
+    <img src="data:image/png;base64,{{ instructions_context.qr_code_image }}" alt="QR Code" style="display: block; margin: 10px 0;">
     Or use this link: <a href="{{ instructions_context.qr_link }}">{{ instructions_context.qr_link }}</a>
     </li>
-</ol>
-
+</ul>
+    
+    
 {% endblock %}
