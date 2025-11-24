@@ -8,12 +8,14 @@ from django.urls import reverse
 from urllib.parse import urlencode
 from django.http import JsonResponse
 from django.utils import timezone
+from django.apps import apps
 
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
 
 from study_server.utils import data_to_csv_response
+from data_sources.models import DataSource
 from .models import Study, Consent
 from .forms import ConsentAcceptanceForm, DataSourceSelectionForm
 from . import services
@@ -141,8 +143,28 @@ def consent_workflow(request, study_id):
             'content': rendered,
             'scroll_to': 'consent-form'
         })
+    
 
     # handle the datasource selection box and new datasource button
+    available_sources = profile.data_sources.filter(
+        polymorphic_ctype__model=consent.source_type.lower(),
+    )
+    all_models = apps.get_app_config('data_sources').get_models()
+    if available_sources.   count() == 0:
+        for model in all_models:
+            if issubclass(model, DataSource) and model.__name__ == consent.source_type:
+                DataSourceClass = model
+                break
+        new_source = DataSourceClass.objects.create(
+            profile=profile,
+            name=f"{consent.source_type} for {study.title}"
+        )
+        consent.data_source = new_source
+        consent.is_complete = True
+        consent.save()
+        return redirect(f"{reverse('consent_workflow', args=[study.id])}")
+
+    # Data source of this type exists, show the selection form
     available_sources = profile.data_sources.filter(
         polymorphic_ctype__model=consent.source_type.lower(),
     )
