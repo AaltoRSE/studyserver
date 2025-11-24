@@ -106,7 +106,7 @@ class GooglePortabilityDataSource(DataSource):
             'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
             'redirect_uri': redirect_url,
             'response_type': 'code',
-            'scope': 'https://www.googleapis.com/auth/dataportability.myactivity.youtube',
+            'scope': 'https://www.googleapis.com/auth/dataportability.discover.likes https://www.googleapis.com/auth/dataportability.discover.follows https://www.googleapis.com/auth/dataportability.discover.not_interested https://www.googleapis.com/auth/dataportability.chrome.history https://www.googleapis.com/auth/dataportability.myactivity.play https://www.googleapis.com/auth/dataportability.myactivity.search https://www.googleapis.com/auth/dataportability.myactivity.youtube',
             'access_type': 'offline',
             'state': state_token,
             'prompt': 'consent',
