@@ -3,24 +3,6 @@
 from django.db import migrations
 
 
-def create_researcher_group(apps, schema_editor):
-    Group = apps.get_model('auth', 'Group')
-    Permission = apps.get_model('auth', 'Permission')
-    ContentType = apps.get_model('contenttypes', 'ContentType')
-
-    researcher_group, created = Group.objects.get_or_create(name='Researchers')
-    study_content_type = ContentType.objects.get(app_label='studies', model='study')
-    consent_content_type = ContentType.objects.get(app_label='studies', model='consent')
-
-    study_permissions = Permission.objects.filter(content_type=study_content_type)
-    consent_view_perm = Permission.objects.get(content_type=consent_content_type, codename='view_consent')
-    consent_change_perm = Permission.objects.get(content_type=consent_content_type, codename='change_consent')
-
-    researcher_group.permissions.add(*study_permissions)
-    researcher_group.permissions.add(consent_view_perm, consent_change_perm)
-
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -29,5 +11,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(create_researcher_group),
+        # Logic moved to studies/apps.py to avoid race conditions
     ]

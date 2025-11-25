@@ -100,6 +100,7 @@ def manage_token(request):
     }
     return render(request, 'users/manage_token.html', context)
 
+
 @login_required
 def dashboard(request):
     if request.user.profile.user_type == 'researcher':

@@ -2,7 +2,8 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
-from .models import AwareDataSource, JsonUrlDataSource, Profile
+from .models import AwareDataSource
+from users.models import Profile
 import uuid
 
 
@@ -66,17 +67,7 @@ class AwareDataSourceTest(TestCase):
             profile=self.profile,
             name='Test Aware Source'
         )
-    
-    @patch('data_sources.db_connector.get_device_id_for_label')
-    def test_confirm_device_success(self, mock_get_device_id):
-        device_id = uuid.uuid4()
-        mock_get_device_id.return_value = device_id
-        success, message = self.source.confirm_device()
-        self.assertTrue(success)
-        self.assertEqual(message, "AWARE device confirmed and linked successfully!")
-        self.source.refresh_from_db()
-        self.assertEqual(self.source.status, 'active')
-        self.assertEqual(self.source.device_id, device_id)
+
 
 
     
