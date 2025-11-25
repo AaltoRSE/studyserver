@@ -101,18 +101,12 @@ def manage_token(request):
     return render(request, 'users/manage_token.html', context)
 
 
-@login_required
-def dashboard(request):
-    if request.user.profile.user_type == 'researcher':
-        return redirect('researcher_dashboard')
-
-    context = {}
-
+def get_past_consents(profile):
     past_consents = Consent.objects.filter(
-        participant=request.user.profile,
+        participant=profile,
         revocation_date__isnull=False
     )
-    context['past_consents'] = []
+    result = []
     for consent in past_consents:
         model_name = consent.source_type
         try:
@@ -120,13 +114,16 @@ def dashboard(request):
             display_type = ModelClass.display_type.fget(None)
         except (LookupError, AttributeError):
             display_type = consent.source_type
-        context['past_consents'].append({
+        result.append({
             'consent': consent,
             'type_name': display_type,
         })
+    return result
 
+
+def get_active_studies_data(profile, request):
     all_consents = Consent.objects.filter(
-        participant=request.user.profile,
+        participant=profile,
         revocation_date__isnull=True
     )
 
@@ -175,8 +172,9 @@ def dashboard(request):
                     })
                 else:
                     studies_data[study]['active_consents'].append(consent)
+    return studies_data
 
-    # Add forms for selecting data sources
+def add_selection_forms_to_studies_data(request, studies_data):
     for study, data in studies_data.items():
         for item in data['incomplete_consents']:
             consent = item['consent']
@@ -187,21 +185,33 @@ def dashboard(request):
                 consent.selection_form = DataSourceSelectionForm(
                     available_sources=available_sources
                 )
-    context['studies_data'] = studies_data
-    
-    # Find the first incomplete source that requires setup and instructions
+
+def get_next_instructions_card(request, studies_data):
     for study, data in studies_data.items():
-        if not 'instructions_template' in context:
-            for item in data['incomplete_sources']:
-                if item['source'].requires_setup:
-                    _context, template = item['source'].get_instructions_card(
-                        request,
-                        consent_id=item['consent'].id,
-                        study_id=study.id
-                    )
-                    context['instructions_template'] = template
-                    context['instructions_context'] = _context
-                    break
+        for item in data['incomplete_sources']:
+            if item['source'].requires_setup:
+                _context, template = item['source'].get_instructions_card(
+                    request,
+                    consent_id=item['consent'].id,
+                    study_id=study.id
+                )
+                return template, _context
+    return None, None
+
+@login_required
+def dashboard(request):
+    if request.user.profile.user_type == 'researcher':
+        return redirect('researcher_dashboard')
+
+    context = {}
+    context['past_consents'] = get_past_consents(request.user.profile)
+    context['studies_data'] = get_active_studies_data(request.user.profile, request)
+    add_selection_forms_to_studies_data(request, context['studies_data'])
+
+    card_template, card_context = get_next_instructions_card(request, context['studies_data'])
+    if card_template and card_context:
+        context['instructions_template'] = card_template
+        context['instructions_context'] = card_context
     
     return render(request, 'dashboard.html', context)
 
