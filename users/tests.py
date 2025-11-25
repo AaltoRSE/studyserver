@@ -2,6 +2,7 @@ from django.test import TestCase, Client
 from django.test import override_settings
 from django.urls import reverse
 from users.models import Profile
+from rest_framework.authtoken.models import Token
 from studies.models import Study, Consent
 from django.contrib.auth.models import User
 from django.urls import path
@@ -16,6 +17,17 @@ def test_message_view(request):
 urlpatterns = real_urlpatterns + [
     path('test-message/', test_message_view, name='test_message_view'),
 ]
+
+class StaticPagesTest(TestCase):
+    def test_terms_of_service_renders(self):
+        response = self.client.get(reverse('terms_of_service'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(len(response.content.decode().strip()) > 0)
+
+    def test_privacy_statement_renders(self):
+        response = self.client.get(reverse('privacy_statement'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(len(response.content.decode().strip()) > 0)
 
 class HomeViewTest(TestCase):
     def setUp(self):
@@ -58,6 +70,46 @@ class SignupViewTest(TestCase):
         })
         self.assertRedirects(response, reverse('login'))
         self.assertTrue(User.objects.filter(username='newuser').exists())
+
+
+class SignupResearcherViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_signup_researcher_page_loads(self):
+        response = self.client.get(reverse('signup_researcher'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_signup_researcher_creates_user(self):
+        response = self.client.post(reverse('signup_researcher'), {
+            'username': 'newresearcher',
+            'password1': 'StrongPass123',
+            'password2': 'StrongPass123',
+        })
+        self.assertRedirects(response, reverse('login'))
+        self.assertTrue(User.objects.filter(username='newresearcher').exists())
+
+
+class ManageTokenViewTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='apitest', password='pass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+        #self.token = Token.objects.create(user=self.user)
+        self.client.login(username='apitest', password='pass')
+
+    def test_token_is_shown(self):
+        response = self.client.get(reverse('manage_token'))
+        self.assertEqual(response.status_code, 200)
+        token = Token.objects.get(user=self.user).key
+        self.assertIn(token, response.content.decode())
+
+    def test_token_refresh(self):
+        old_token = Token.objects.get(user=self.user).key
+        response = self.client.post(reverse('manage_token'), {'regenerate': '1'}, follow=True)
+        new_token = Token.objects.get(user=self.user).key
+        self.assertNotEqual(old_token, new_token)
+        self.assertIn(new_token, response.content.decode())
 
 
 class DashboardViewTest(TestCase):
