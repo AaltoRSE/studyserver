@@ -162,6 +162,10 @@ def consent_workflow(request, study_id):
         consent.data_source = new_source
         consent.is_complete = True
         consent.save()
+        if new_source.requires_setup:
+            base_url = new_source.get_setup_url()
+            query_params = urlencode({'consent_id': consent_id})
+            return redirect(f'{base_url}?{query_params}')
         return redirect(f"{reverse('consent_workflow', args=[study.id])}")
 
     # Data source of this type exists, show the selection form

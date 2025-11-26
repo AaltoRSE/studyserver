@@ -25,9 +25,10 @@ You have enrolled in {{ study.title }}.
 {% for item in data.incomplete_consents %}
 <div>
     <h3>Consent Required for {{ item.type_name }}</h3>
-    {% include "studies/consent_action.html" with consent=item.consent study=study %}
+    <a href="{% url 'consent_workflow' study.id %}?consent_id={{ item.consent.id }}">
+        <button>Continue Consent Workflow</button>
+    </a>
 </div>
-
 {% endfor %}
 
 {% if data.optional_consents %}

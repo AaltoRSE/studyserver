@@ -17,7 +17,7 @@ from studies.forms import DataSourceSelectionForm
 from .forms import CustomUserCreationForm
 from studies.models import Consent
 from studies.views import study_detail
-
+from data_sources.models import get_display_type_from_source_type
 
 
 def home(request):
@@ -121,49 +121,49 @@ def get_past_consents(profile):
     return result
 
 
-def get_active_studies_data(profile, request):
-    all_consents = Consent.objects.filter(
-        participant=profile,
+def get_active_studies(user):
+    active_consents = Consent.objects.filter(
+        participant=user.profile,
         revocation_date__isnull=True
-    )
+    ).select_related('study')
+    study_ids = active_consents.values_list('study_id', flat=True).distinct()
+    return Study.objects.filter(id__in=study_ids)
 
+
+
+
+
+def get_active_studies_data(profile, request):
     studies_data = {}
-    for consent in all_consents.exclude(revocation_date__isnull=False):
-        study = consent.study
-        if study not in studies_data:
-            studies_data[study] = {
-                'active_consents': [],
-                'incomplete_consents': [],
-                'incomplete_sources': [],
-                'optional_consents': []
+    for study in get_active_studies(profile.user):
+        studies_data[study] = {
+            'active_consents': [],
+            'incomplete_consents': [],
+            'incomplete_sources': [],
+            'optional_consents': []
+        }
+        
+        consents = Consent.objects.filter(
+            participant=profile,
+            study=study,
+            revocation_date__isnull=True
+        )
+        for consent in consents:
+            consent_data = {
+                'consent': consent,
+                'type_name': get_display_type_from_source_type(consent.source_type),
             }
-
-        model_name = consent.source_type
-        try:
-            ModelClass = apps.get_model('data_sources', model_name)
-            display_type = ModelClass.display_type.fget(None)
-        except (LookupError, AttributeError):
-            display_type = consent.source_type
-
-        if consent.is_optional:
             if consent.data_source:
                 source = consent.data_source.get_real_instance()
-            else:
-                source = None
+                consent_data['source'] = source
             
-            studies_data[study]['optional_consents'].append({
-                'consent': consent,
-                'source': source,
-                'type_name': display_type,
-            })
-        elif not consent.is_complete:
-            studies_data[study]['incomplete_consents'].append({
-                'consent': consent,
-                'type_name': display_type,
-            })
-        else:
-            if consent.data_source:
-                source = consent.data_source.get_real_instance()
+
+            if consent.is_optional:
+                studies_data[study]['optional_consents'].append(consent_data)
+            elif not consent.is_complete:
+                studies_data[study]['incomplete_consents'].append(consent_data)
+            elif consent.data_source:
+                # data source created, so consent is given, but data source may need setup
                 instructions = source.get_instructions_card(request, consent_id=consent.id, study_id=study.id)
                 if source.status == 'pending' and instructions:
                     studies_data[study]['incomplete_sources'].append({
@@ -174,28 +174,16 @@ def get_active_studies_data(profile, request):
                     studies_data[study]['active_consents'].append(consent)
     return studies_data
 
-def add_selection_forms_to_studies_data(request, studies_data):
-    for study, data in studies_data.items():
-        for item in data['incomplete_consents']:
-            consent = item['consent']
-            if not consent.data_source and consent.consent_text_accepted:
-                available_sources = request.user.profile.data_sources.filter(
-                    polymorphic_ctype__model=consent.source_type.lower(),
-                )
-                consent.selection_form = DataSourceSelectionForm(
-                    available_sources=available_sources
-                )
-
 def get_next_instructions_card(request, studies_data):
     for study, data in studies_data.items():
         for item in data['incomplete_sources']:
             if item['source'].requires_setup:
-                _context, template = item['source'].get_instructions_card(
+                card_context, card_template = item['source'].get_instructions_card(
                     request,
                     consent_id=item['consent'].id,
                     study_id=study.id
                 )
-                return template, _context
+                return card_template, card_context
     return None, None
 
 @login_required
@@ -206,7 +194,6 @@ def dashboard(request):
     context = {}
     context['past_consents'] = get_past_consents(request.user.profile)
     context['studies_data'] = get_active_studies_data(request.user.profile, request)
-    add_selection_forms_to_studies_data(request, context['studies_data'])
 
     card_template, card_context = get_next_instructions_card(request, context['studies_data'])
     if card_template and card_context:
