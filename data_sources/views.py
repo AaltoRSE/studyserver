@@ -15,6 +15,33 @@ from datetime import date, datetime, time
 from urllib.parse import urlencode
 
 
+def form_has_only_name_field(form):
+    fields = list(form.fields.keys())
+    return fields == ['name']
+
+def source_default_title(source_title, consent_id=None, profile = None):
+    default_name = f"{source_title} Source"
+    if consent_id:
+        consent = Consent.objects.filter(
+            id=consent_id,
+            participant=profile
+        ).first()
+        if consent:
+            study = consent.study
+            default_name += f" for {study.title}"
+    return default_name
+
+def link_consent_to_source(consent_id, data_source, profile):
+    consent = Consent.objects.filter(
+        id=consent_id,
+        participant=profile
+    ).first()
+    if consent:
+        consent.data_source = data_source
+        consent.is_complete = True
+        consent.save()
+
+
 @login_required
 def select_data_source_type(request):
     source_types = []
@@ -31,10 +58,6 @@ def select_data_source_type(request):
 
 def add_data_source(request, source_type):
     consent_id = request.GET.get('consent_id')
-    if consent_id:
-        query_params = f'?consent_id={consent_id}'
-    else:
-        query_params = ''
 
     try:
         # Dynamically get the Model and Form classes
@@ -46,43 +69,59 @@ def add_data_source(request, source_type):
     except (LookupError, AttributeError):
         raise Http404(f"Invalid data source type {source_type}")
     
-    if request.method == 'POST':
+    source_title = source_type.replace('_', ' ')
+    default_name = source_default_title(source_title, consent_id, request.user.profile)
+    
+    if request.method == 'GET':
+        form = FormClass(initial={'name': default_name})
+        if form_has_only_name_field(form):
+            # Create a form that is already filled, no user input needed
+            form = FormClass({'name': default_name})
+        else:
+            # Actually render the form and wait for a post
+            return render(
+                request,
+                'data_sources/add_data_source.html',
+                {
+                    'form': form,
+                    'title': f"Add {source_title.title()} Source"
+                }
+            )
+    else:
+        # Normal post, create the form from posted data
         form = FormClass(request.POST)
-        if form.is_valid():
-            new_source = form.save(commit=False)
-            new_source.profile = request.user.profile
-            if not new_source.requires_setup and not new_source.requires_confirmation:
-                new_source.status = 'active'
-            new_source.save()
 
-            # Link to consent if coming from consent workflow
+    if form.is_valid():
+        new_source = form.save(commit=False)
+        new_source.profile = request.user.profile
+        if not new_source.requires_setup and not new_source.requires_confirmation:
+            new_source.status = 'active'
+        new_source.save()
+
+        # Link to consent if coming from consent workflow
+        if consent_id:
+            link_consent_to_source(consent_id, new_source, request.user.profile)
+        
+
+        if new_source.requires_setup:
+            base_url = new_source.get_setup_url()
+            if consent_id:
+                query_params = urlencode({'consent_id': consent_id})
+                return redirect(f'{base_url}?{query_params}')
+            else:
+                return redirect(base_url)
+        else:
+            messages.success(request, f"Successfully added data source: {new_source.name}")
             if consent_id:
                 consent = Consent.objects.filter(
-                    id=consent_id, 
+                    id=consent_id,
                     participant=request.user.profile
                 ).first()
-                if consent:
-                    consent.data_source = new_source
-                    consent.is_complete = True
-                    consent.save()
-            
-            if new_source.requires_setup:
-                base_url = new_source.get_setup_url()
-                if consent_id:
-                    query_params = urlencode({'consent_id': consent_id})
-                    return redirect(f'{base_url}?{query_params}')
-                else:
-                    return redirect(base_url)
+                return redirect('consent_workflow', study_id=consent.study.id)
             else:
-                messages.success(request, f"Successfully added data source: {new_source.name}")
-                if consent_id:
-                    return redirect('consent_workflow', study_id=consent.study.id)
-                else:
-                    return redirect('dashboard')
-
-    else:
-        form = FormClass()
+                return redirect('dashboard')
     
+    # Invalid form, re-render
     title = f"Add {source_type.replace('_', ' ').title()} Source"
     return render(request, 'data_sources/add_data_source.html', {'form': form, 'title': title})
 
