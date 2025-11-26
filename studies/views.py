@@ -92,83 +92,66 @@ def study_detail(request, study_id):
     return render(request, 'studies/study_detail_wrapper.html', {'study_page_content': template.render(context)})
 
 
-@login_required
-def consent_workflow(request, study_id):
-    study = get_object_or_404(Study, pk=study_id)
-    profile = request.user.profile
 
-    consent_id = request.GET.get('consent_id')
+def get_next_consent(profile, study, consent_id=None):
     if consent_id:
-        consent = get_object_or_404(Consent, id=consent_id, participant=profile, study=study, revocation_date__isnull=True)
-    else:
-        consent = Consent.objects.filter(
+        return get_object_or_404(
+            Consent,
+            id=consent_id,
             participant=profile,
             study=study,
-            is_complete=False,
-            is_optional=False,
             revocation_date__isnull=True
-        ).first()
+        )
+    return Consent.objects.filter(
+        participant=profile,
+        study=study,
+        is_complete=False,
+        is_optional=False,
+        revocation_date__isnull=True
+    ).first()
 
-    if not consent:
-        messages.success(request, f"All required sources set up for '{study.title}'")
-        return redirect('dashboard')
 
+def consent_checkbox_view(request, consent, study):
     html_template = services.get_consent_template(study, consent.source_type)
     template = engines['django'].from_string(html_template)
-    
-    # step 1: show the consent checkbox
-    if not consent.consent_text_accepted:
-        if request.method == 'POST':
-            form = ConsentAcceptanceForm(request.POST)
-            if form.is_valid():
-                consent.consent_text_accepted = True
-                if consent.data_source:
-                    consent.is_complete = True
-                consent.save()
-                return redirect(f"{reverse('consent_workflow', args=[study.id])}?consent_id={consent.id}")
-        else:
-            form = ConsentAcceptanceForm()
 
-        checkbox_template = get_template('studies/consent_checkbox_form.html')
-        consent_form_html = checkbox_template.render({'form': form}, request)
+    if request.method == 'POST':
+        form = ConsentAcceptanceForm(request.POST)
+        if form.is_valid():
+            consent.consent_text_accepted = True
+            if consent.data_source:
+                consent.is_complete = True
+            consent.save()
+            return redirect(f"{reverse('consent_workflow', args=[study.id])}?consent_id={consent.id}")
+    else:
+        form = ConsentAcceptanceForm()
+
+    checkbox_template = get_template('studies/consent_checkbox_form.html')
+    consent_form_html = checkbox_template.render({'form': form}, request)
         
-        context = {
-            'consent': consent,
-            'study': study,
-            'consent_form': mark_safe(consent_form_html),
-            'request': request,
-        }
-        rendered = template.render(context)
-        return render(request, 'studies/consent_wrapper.html', {
-            'content': rendered,
-            'scroll_to': 'consent-form'
-        })
-    
+    context = {
+        'consent': consent,
+        'study': study,
+        'consent_form': mark_safe(consent_form_html),
+        'request': request,
+    }
+    rendered = template.render(context)
+    return render(request, 'studies/consent_wrapper.html', {
+        'content': rendered,
+        'scroll_to': 'consent-form'
+    })
 
-    # handle the datasource selection box and new datasource button
-    available_sources = profile.data_sources.filter(
-        polymorphic_ctype__model=consent.source_type.lower(),
-    )
-    all_models = apps.get_app_config('data_sources').get_models()
-    if available_sources.   count() == 0:
-        for model in all_models:
-            if issubclass(model, DataSource) and model.__name__ == consent.source_type:
-                DataSourceClass = model
-                break
-        new_source = DataSourceClass.objects.create(
-            profile=profile,
-            name=f"{consent.source_type} for {study.title}"
-        )
-        consent.data_source = new_source
-        consent.is_complete = True
-        consent.save()
-        if new_source.requires_setup:
-            base_url = new_source.get_setup_url()
-            query_params = urlencode({'consent_id': consent_id})
-            return redirect(f'{base_url}?{query_params}')
-        return redirect(f"{reverse('consent_workflow', args=[study.id])}")
 
-    # Data source of this type exists, show the selection form
+def create_data_source_flow(consent):
+    base_url = reverse('add_data_source', args=[consent.source_type.replace('DataSource', '')])
+    query_params = urlencode({'consent_id': consent.id})
+    return redirect(f'{base_url}?{query_params}')
+
+
+def select_data_source_view(request, consent, profile, study):
+    html_template = services.get_consent_template(study, consent.source_type)
+    template = engines['django'].from_string(html_template)
+
     available_sources = profile.data_sources.filter(
         polymorphic_ctype__model=consent.source_type.lower(),
     )
@@ -204,6 +187,30 @@ def consent_workflow(request, study_id):
         'content': rendered,
         'scroll_to': 'consent-form'
     })
+
+@login_required
+def consent_workflow(request, study_id):
+    study = get_object_or_404(Study, pk=study_id)
+    profile = request.user.profile
+    consent_id = request.GET.get('consent_id')
+    consent = get_next_consent(profile, study, consent_id)
+
+    if not consent:
+        messages.success(request, f"All required sources set up for '{study.title}'")
+        return redirect('dashboard')
+    
+    # step 1: show the consent checkbox
+    if not consent.consent_text_accepted:
+        return consent_checkbox_view(request, consent, study)
+    
+    # step 2: select or create data source
+    available_sources = profile.data_sources.filter(
+        polymorphic_ctype__model=consent.source_type.lower(),
+    )
+    if available_sources.count() == 0:
+        return create_data_source_flow(consent)
+    else:
+        return select_data_source_view(request, consent, profile, study)
 
 
 @api_view(['GET'])
