@@ -362,7 +362,7 @@ class GooglePortabilityDataSource(DataSource):
             return
             
 
-    def process(self):
+    def _process_data(self):
         """ Get any available data and process it.
         """
         self.download_data_files()

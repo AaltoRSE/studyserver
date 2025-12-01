@@ -18,6 +18,9 @@ class JsonUrlDataSource(DataSource):
         """Fetches and returns the JSON data from the source URL.
         
         No formatting or processing, just returns the string."""
+        if not self.has_active_consent():
+            return False, "No consent found."
+
         if data_type != 'raw_json':
             return {"error": "Invalid data type requested."}
         try:
@@ -38,3 +41,4 @@ class JsonUrlDataSource(DataSource):
             return enriched_data
         except requests.exceptions.RequestException as e:
             return {"error": f"Could not fetch data from URL: {e}"}
+        

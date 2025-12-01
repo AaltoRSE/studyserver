@@ -167,5 +167,7 @@ class TikTokPortabilityDataSource(DataSource):
         except KeyError:
             return False, "Invalid response from TikTok during token refresh."
         
-    def process(self):
+    def _process_data(self):
+        if not self.has_active_consent():
+            return False, "No consent found."
         pass
