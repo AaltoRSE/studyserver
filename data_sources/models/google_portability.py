@@ -113,11 +113,50 @@ class GooglePortabilityDataSource(DataSource):
         }
         auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
         return auth_url
-    
+
+    def create_archive_job(self):
+        """Initiate a data export job and store the job ID."""
+        api_url = 'https://dataportability.googleapis.com/v1/portabilityArchive:initiate'
+        headers = {'Authorization': f"Bearer {self.access_token}"}
+        body = {
+            'resources': [
+                'discover.likes',
+                'discover.follows',
+                'discover.not_interested',
+                'chrome.history',
+                'myactivity.play',
+                'myactivity.search',
+                'myactivity.youtube'
+            ]
+        }
+        api_response = requests.post(api_url, headers=headers, json=body)
+
+        if api_response.ok:
+            response_data = api_response.json()
+            job_id = response_data.get('archiveJobId')
+            if job_id:
+                job_list = self.data_job_ids or []
+                job_list.append(job_id)
+                self.data_job_ids = job_list
+
+                job_status = self.job_status or {}
+                job_status[job_id] = {'completed': False, 'downloaded_at': None, 'state': None}
+                self.job_status = job_status
+                self.save()
+                return True, "Data export initiated successfully."
+            else:
+                return False, "No archiveJobId returned in response."
+        else:
+            print(f"Failed to initiate data export: {api_response.text}")
+            return False, f"Failed to initiate data export: {api_response.text}"
+
+
     def handle_auth_callback(self, request):
         code = request.GET.get('code')
         if not code:
-            messages.error(request, "Google authorization failed: No code returned.")
+            error_msg = "Google authorization failed: No code returned."
+            print(error_msg)
+            messages.error(request, error_msg)
             return redirect('dashboard')
 
         token_url = 'https://oauth2.googleapis.com/token'
@@ -147,29 +186,16 @@ class GooglePortabilityDataSource(DataSource):
             return False, f"Error parsing token response: Missing key {e}"
 
         # Use the token to get the data
-        api_url = 'https://dataportability.googleapis.com/v1/portabilityArchive:initiate'
-        headers = {'Authorization': f"Bearer {self.access_token}"}
-        body = {'resources': ['myactivity.youtube']}
-        api_response = requests.post(api_url, headers=headers, json=body)
-
-        if api_response.ok:
-            messages.success(request, "Data export initiated successfully.")
-            response_data = api_response.json()
-            job_id = response_data.get('archiveJobId')
-            # append to the list of job IDs
-            job_list = self.data_job_ids or []
-            job_list.append(job_id)
-            self.data_job_ids = job_list
-
-            job_status = self.job_status or {}
-            job_status[job_id] = {'completed': False, 'downloaded_at': None, 'state': None}
-            self.job_status = job_status
-            self.save()
-
+        try:
+            success, message = self.create_archive_job()
+        except Exception as e:
+            print(f"Error creating archive job: {e}")
+            return False, f"Error creating archive job: {e}"
+        if success:
+            return True, "Authorization successful."
         else:
-            return False, "Failed to initiate data export."
-
-        return True, "Authorization successful."
+            print(f"Error creating archive job: {message}")
+            return False, message
     
     def refresh_access_token(self):
         if not self.refresh_token:
@@ -251,7 +277,7 @@ class GooglePortabilityDataSource(DataSource):
                 api_response = requests.get(api_url, headers=headers)
                 status_data = api_response.json()
                 print("Data export status:", status_data)
-                if status_data.get('state') != 'COMPLETED':
+                if status_data.get('state') != 'COMPLETE':
                     return False, "Data export is still processing. Please check back later."
 
                 download_urls = status_data.get('urls', [])
@@ -260,7 +286,7 @@ class GooglePortabilityDataSource(DataSource):
 
                     with open(f'data/google_data_{job_id}_{i}.zip', 'wb') as f:
                         f.write(file_response.content)
-                self.downloaded_files.append(f'data/google_data_{job_id}_{i}.zip')
+                    self.downloaded_files.append(f'data/google_data_{job_id}_{i}.zip')
                 self.processing_status = 'processing'
 
                 job_status[job_id] = {'completed': True, 'downloaded_at': timezone.now().isoformat(), 'state': 'COMPLETED'}
