@@ -14,8 +14,6 @@
 
         <a href="{% url 'edit_data_source' source.id %}">(Edit)</a>
 
-        <a href="{% url 'delete_data_source' source.id %}" style="display: inline; color: red; text-decoration: underline;">(Delete)</a>
-
         <form style="display: inline;" method="post" action="{% url 'delete_data_source' source.id %}" onsubmit="return confirm('Are you sure you want to delete this source?');">
             {% csrf_token %}
             <button type="submit" style="background:none; border:none; color:red; cursor:pointer; text-decoration:underline;">(Delete)</button>
