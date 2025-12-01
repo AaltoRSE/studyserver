@@ -1,4 +1,5 @@
 import uuid
+from django.apps import apps
 from django.db import models
 from polymorphic.models import PolymorphicModel
 from users.models import Profile
@@ -54,10 +55,24 @@ class DataSource(PolymorphicModel):
         """Confirm the source and download any initial data if needed."""
         return None
     
-    def process(self):
-        """ Run periodic processing tasks for this data source.
-        """
-        return None
+    def has_active_consent(self):
+        Consent = apps.get_model('studies', 'Consent')
+        return Consent.objects.filter(
+            data_source=self,
+            revocation_date__isnull=True,
+            is_complete=True
+        ).exists()
+    
+    def process(self, *args, **kwargs):
+        if not self.has_active_consent():
+            print(f"No active consent for {self}. Skipping processing.")
+            return False, "No consent found."
+        # Optionally, call a hook for subclass-specific processing
+        return self._process_data(*args, **kwargs)
+
+    def _process_data(self, *args, **kwargs):
+        """Override this in subclasses for actual processing logic."""
+        pass
 
     def get_data_types(self):
         """Returns a list of available data type names for this source."""
