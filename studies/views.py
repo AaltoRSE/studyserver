@@ -227,7 +227,7 @@ def study_data_api(request, study_id):
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
     output_format = request.GET.get('format', 'json')
-
+    
     active_consents = Consent.objects.filter(
         study=study,
         is_complete=True,
@@ -242,14 +242,21 @@ def study_data_api(request, study_id):
             continue
         source = consent.data_source.get_real_instance()
         data_types = source.get_data_types()
+
         all_data_types.update(data_types)
         if data_type:
             data_types = [data_type] if data_type in data_types else []
+
+        consent_start = consent.consent_date
+        interval_start = max(filter(None, [consent_start, start_date]))
+        consent_end = consent.revocation_date or timezone.now()
+        interval_end = min(filter(None, [consent_end, end_date]))
+        
         for dt in data_types:
             data = source.fetch_data(
                 data_type=dt,
-                start_date=start_date,
-                end_date=end_date
+                start_date=interval_start,
+                end_date=interval_end
             )
             for row in data:
                 row["data_type"] = dt
