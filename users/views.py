@@ -130,9 +130,6 @@ def get_active_studies(user):
     return Study.objects.filter(id__in=study_ids)
 
 
-
-
-
 def get_active_studies_data(profile, request):
     studies_data = {}
     for study in get_active_studies(profile.user):
@@ -171,7 +168,11 @@ def get_active_studies_data(profile, request):
                         'source': source,
                     })
                 else:
-                    studies_data[study]['active_consents'].append(consent)
+                    studies_data[study]['active_consents'].append({
+                        'consent': consent,
+                        'source': source,
+                        'type_name': consent_data['type_name'],
+                    })
     return studies_data
 
 def get_next_instructions_card(request, studies_data):

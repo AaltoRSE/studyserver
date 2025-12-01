@@ -31,14 +31,40 @@ You have enrolled in {{ study.title }}.
 </div>
 {% endfor %}
 
+{% if data.active_consents %}
+    <div>
+        <h3>Completed Required Data Sources for {{ study.title }}</h3>
+        <ul>
+        {% for consent in data.active_consents %}
+            <li>
+                {{ consent.source.display_type }}: Linked.
+                <a href="{% url 'withdraw_from_study' study.id %}?consent_id={{ consent.consent.id }}" style="color: red; margin-left: 10px;">
+                    (Revoke)
+                </a>
+            </li>
+        {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
 {% if data.optional_consents %}
     <div>
         <h3>Optional Data Sources for {{ study.title }}</h3>
         <ul>
         {% for opt_item in data.optional_consents %}
-            <li>
-                Setup {{ opt_item.type_name }}: <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">here</a>
-            </li>
+            {% if opt_item.consent.is_complete %}
+                <li>
+                    {{ opt_item.type_name }}: Already linked.
+                    <a href="{% url 'withdraw_from_study' study.id %}?consent_id={{ opt_item.consent.id }}" style="color: red; margin-left: 10px;">
+                        (Revoke)
+                    </a>
+                </li>
+            {% else %}
+                <li>
+                    Setup {{ opt_item.type_name }}: 
+                    <a href="{% url 'consent_workflow' study.id %}?consent_id={{ opt_item.consent.id }}">here</a>
+                </li>
+            {% endif %}
         {% endfor %}
         </ul>
     </div>
