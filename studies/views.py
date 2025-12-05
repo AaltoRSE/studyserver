@@ -263,9 +263,9 @@ def study_data_api(request, study_id):
         if data_type:
             data_types = [data_type] if data_type in data_types else []
 
-        consent_start = consent.consent_date
+        consent_start = _parse_date(consent.consent_date)
         interval_start = max(filter(None, [consent_start, start_date]))
-        consent_end = consent.revocation_date or timezone.now()
+        consent_end = _parse_date(consent.revocation_date) or timezone.now()
         interval_end = min(filter(None, [consent_end, end_date]))
 
         for dt in data_types:
