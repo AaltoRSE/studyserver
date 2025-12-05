@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from django.http import JsonResponse
 from django.utils import timezone
 from django.apps import apps
+from django.utils import timezone
 
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
@@ -226,6 +227,11 @@ def _clean_row(row):
 def _parse_date(date_str):
     return datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
 
+def _make_timezone_aware(dt):
+    if dt is not None and timezone.is_naive(dt):
+        return timezone.make_aware(dt)
+    return dt
+
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -267,15 +273,13 @@ def study_data_api(request, study_id):
         if not consent_start:
             continue
 
-        interval_candidates = [consent_start, start_date]
-        interval_candidates = [dt for dt in interval_candidates if dt is not None]
+        interval_candidates = [_make_timezone_aware(dt) for dt in [consent_start, start_date] if dt is not None]
         interval_start = max(interval_candidates) if interval_candidates else None
 
         consent_end = consent.revocation_date or timezone.now()
-        interval_end_candidates = [consent_end, end_date]
-        interval_end_candidates = [dt for dt in interval_end_candidates if dt is not None]
+        interval_end_candidates = [_make_timezone_aware(dt) for dt in [consent_end, end_date] if dt is not None]
         interval_end = min(interval_end_candidates) if interval_end_candidates else None
-
+        
         for dt in data_types:
             data = source.fetch_data(
                 data_type=dt,
