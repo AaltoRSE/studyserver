@@ -15,6 +15,7 @@ from rest_framework.authentication import TokenAuthentication, SessionAuthentica
 from rest_framework.permissions import IsAuthenticated
 
 from study_server.utils import data_to_csv_response
+from datetime import datetime
 import base64
 from data_sources.models import DataSource
 from .models import Study, Consent
@@ -222,6 +223,9 @@ def _clean_row(row):
                 row[k] = base64.b64encode(v).decode('ascii')
     return row
 
+def _parse_date(date_str):
+    return datetime.strptime(date_str, "%Y-%m-%d") if date_str else None
+
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -233,9 +237,12 @@ def study_data_api(request, study_id):
             return JsonResponse({'error': 'Unauthorized'}, status=403)
 
     data_type = request.GET.get('data_type')
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
+    start_date_param = request.GET.get('start_date')
+    end_date_param = request.GET.get('end_date')
     output_format = request.GET.get('format', 'json')
+
+    start_date = _parse_date(start_date_param)
+    end_date = _parse_date(end_date_param)
     
     active_consents = Consent.objects.filter(
         study=study,
@@ -243,16 +250,6 @@ def study_data_api(request, study_id):
         revocation_date__isnull=True,
         data_source__status='active'
     ).select_related('data_source')
-
-    import base64
-    def _clean_row(row):
-        for k, v in row.items():
-            if isinstance(v, bytes):
-                try:
-                    row[k] = v.decode('utf-8')
-                except Exception:
-                    row[k] = base64.b64encode(v).decode('ascii')
-        return row
 
     all_data = []
     all_data_types = set()
