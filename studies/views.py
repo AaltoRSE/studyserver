@@ -15,6 +15,7 @@ from rest_framework.authentication import TokenAuthentication, SessionAuthentica
 from rest_framework.permissions import IsAuthenticated
 
 from study_server.utils import data_to_csv_response
+import base64
 from data_sources.models import DataSource
 from .models import Study, Consent
 from .forms import ConsentAcceptanceForm, DataSourceSelectionForm
@@ -212,6 +213,14 @@ def consent_workflow(request, study_id):
     else:
         return select_data_source_view(request, consent, profile, study)
 
+def _clean_row(row):
+    for k, v in row.items():
+        if isinstance(v, bytes):
+            try:
+                row[k] = v.decode('utf-8')
+            except Exception:
+                row[k] = base64.b64encode(v).decode('ascii')
+    return row
 
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication, SessionAuthentication])
@@ -235,6 +244,16 @@ def study_data_api(request, study_id):
         data_source__status='active'
     ).select_related('data_source')
 
+    import base64
+    def _clean_row(row):
+        for k, v in row.items():
+            if isinstance(v, bytes):
+                try:
+                    row[k] = v.decode('utf-8')
+                except Exception:
+                    row[k] = base64.b64encode(v).decode('ascii')
+        return row
+
     all_data = []
     all_data_types = set()
     for consent in active_consents:
@@ -251,7 +270,7 @@ def study_data_api(request, study_id):
         interval_start = max(filter(None, [consent_start, start_date]))
         consent_end = consent.revocation_date or timezone.now()
         interval_end = min(filter(None, [consent_end, end_date]))
-        
+
         for dt in data_types:
             data = source.fetch_data(
                 data_type=dt,
@@ -261,8 +280,8 @@ def study_data_api(request, study_id):
             for row in data:
                 row["data_type"] = dt
                 row["source_type"] = consent.source_type
-            all_data.extend(data)
-    
+                all_data.append(_clean_row(row))
+
     if output_format == 'csv':
         return data_to_csv_response(all_data, "study_data.csv")
     else:
