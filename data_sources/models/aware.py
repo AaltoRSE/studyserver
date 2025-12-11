@@ -1,8 +1,9 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
 from django.http import JsonResponse
+from django.contrib import messages
 import qrcode
 from .base import DataSource
 from studies.models import Consent
@@ -55,7 +56,7 @@ class AwareDataSource(DataSource):
         }
         return context, 'data_sources/aware/instructions_card.html'
 
-    def confirm(self, request):
+    def check_for_device(self):
         if self.status == 'active':
             return (True, "This device is already active.")
 
@@ -73,6 +74,17 @@ class AwareDataSource(DataSource):
         self.save()
         return (True, "AWARE device confirmed and linked successfully!")
     
+    def _process_data(self):
+        result, message = self.check_for_device()
+        if not result:
+            print(f"Data processing error for {self}: {message}")
+    
+    def confirm(self, request):
+        result, message = self.check_for_device()
+        if not result:
+            messages.error(request, message)
+        return redirect('dashboard')
+
     def handle_token_view(self, request, token, view_type):
         if str(self.config_token) != str(token):
             return (False, "Invalid configuration token.")
