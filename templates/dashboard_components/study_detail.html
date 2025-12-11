@@ -37,10 +37,8 @@ You have enrolled in {{ study.title }}.
         <ul>
         {% for consent in data.active_consents %}
             <li>
-                {{ consent.source.display_type }}: Linked.
-                <a href="{% url 'withdraw_from_study' study.id %}?consent_id={{ consent.consent.id }}" style="color: red; margin-left: 10px;">
-                    (Revoke)
-                </a>
+                {{ consent.source.display_type }}: <span style="color: green;">Linked.</span>
+                 </br>This data source is set up and actively sending data.
             </li>
         {% endfor %}
         </ul>
@@ -54,10 +52,11 @@ You have enrolled in {{ study.title }}.
         {% for opt_item in data.optional_consents %}
             {% if opt_item.consent.is_complete %}
                 <li>
-                    {{ opt_item.type_name }}: Already linked.
-                    <a href="{% url 'withdraw_from_study' study.id %}?consent_id={{ opt_item.consent.id }}" style="color: red; margin-left: 10px;">
+                    {{ opt_item.type_name }}: <span style="color: green;">Linked.</span>
+                    <a href="{% url 'revoke_consent' opt_item.consent.id %}" style="color: red; margin-left: 10px;">
                         (Revoke)
                     </a>
+                    </br>This data source is set up and actively sending data.
                 </li>
             {% else %}
                 <li>

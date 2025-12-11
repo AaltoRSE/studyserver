@@ -64,11 +64,44 @@ def withdraw_from_study(request, study_id):
             consent.revocation_date = timezone.now()
             consent.is_complete = False
             consent.save()
-        
         messages.success(request, f"You have successfully withdrawn from the study '{study.title}'.")
         return redirect('dashboard')
     
     return render(request, 'studies/withdraw.html', {'study': study})
+
+
+@login_required
+def revoke_consent(request, consent_id):
+    profile = request.user.profile
+    consent = get_object_or_404(Consent, id=consent_id, participant=profile, revocation_date__isnull=True)
+    study = consent.study
+
+    if not consent.is_optional:
+        # Consent is mandatory, cannot revoke individually
+        messages.info(request, "This consent is mandatory for the study. To withdraw, please use the withdrawal page.")
+        withdrawal_url = reverse('withdraw_from_study', args=[study.id])
+        return render(request, 'studies/cannot_revoke_mandatory.html', {
+            'study': study,
+            'consent': consent,
+            'withdrawal_url': withdrawal_url
+        })
+
+    if request.method == 'POST':
+        consent.data_source = None
+        consent.revocation_date = timezone.now()
+        consent.is_complete = False
+        consent.save()
+        # Create a new empty consent for the same data source type
+        Consent.objects.create(
+            participant=profile,
+            study=study,
+            source_type=consent.source_type,
+            is_optional=True
+        )
+        messages.success(request, f"You have revoked consent for {consent.source_type} in '{study.title}'.")
+        return redirect('dashboard')
+
+    return render(request, 'studies/revoke_consent.html', {'study': study, 'consent': consent})
 
 
 def study_detail(request, study_id):

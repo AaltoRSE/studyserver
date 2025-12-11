@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+    <h2>Revoke Consent for {{ consent.name }}</h2>
+
+    <p>Are you sure you want to revoke your consent for {{ consent.name }} in the study "{{ study.title }}"?</p>
+
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit">Yes, Revoke Consent</button>
+        <a href="{% url 'study_detail' study.id %}">Cancel</a>
+    </form>
+
+{% endblock %}
