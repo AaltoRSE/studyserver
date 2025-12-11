@@ -37,8 +37,25 @@ You have enrolled in {{ study.title }}.
         <ul>
         {% for consent in data.active_consents %}
             <li>
-                {{ consent.source.display_type }}: <span style="color: green;">Linked.</span>
-                 </br>This data source is set up and actively sending data.
+                {{ consent.source.display_type }}:
+                {% if consent.source.status == 'active' %}
+                    <span style="color: green;">Linked.</span>
+                    </br>This data source is set up and actively sending data.
+                {% elif consent.source.status == 'pending' %}
+                    <span style="color: orange;">Pending Setup.</span>
+                    </br>Setup is required for this data source.
+                    {% if consent.source.get_setup_url %}
+                        <a href="{{ consent.source.get_setup_url }}?consent_id={{ consent.consent.id }}" style="color: blue; text-decoration: underline; margin-left: 10px;">
+                            Go to Setup/OAuth
+                        </a>
+                    {% endif %}
+                {% elif consent.source.status == 'processing' %}
+                    <span style="color: blue;">Processing.</span>
+                    </br>Data source is being processed.
+                {% else %}
+                    <span style="color: red;">Inactive.</span>
+                    </br>Data source is not yet active.
+                {% endif %}
             </li>
         {% endfor %}
         </ul>
@@ -50,13 +67,30 @@ You have enrolled in {{ study.title }}.
         <h3>Optional Data Sources for {{ study.title }}</h3>
         <ul>
         {% for opt_item in data.optional_consents %}
-            {% if opt_item.consent.is_complete %}
+            {% if opt_item.consent.is_complete and opt_item.source %}
                 <li>
-                    {{ opt_item.type_name }}: <span style="color: green;">Linked.</span>
-                    <a href="{% url 'revoke_consent' opt_item.consent.id %}" style="color: red; margin-left: 10px;">
-                        (Revoke)
-                    </a>
-                    </br>This data source is set up and actively sending data.
+                    {{ opt_item.type_name }}:
+                    {% if opt_item.source.status == 'active' %}
+                        <span style="color: green;">Linked.</span>
+                        <a href="{% url 'revoke_consent' opt_item.consent.id %}" style="color: red; margin-left: 10px;">
+                            (Revoke)
+                        </a>
+                        </br>This data source is set up and actively sending data.
+                    {% elif opt_item.source.status == 'pending' %}
+                        <span style="color: orange;">Pending Setup.</span>
+                        </br>Setup is required for this data source.
+                        {% if opt_item.source.get_setup_url %}
+                            <a href="{{ opt_item.source.get_setup_url }}?consent_id={{ opt_item.consent.id }}" style="color: blue; text-decoration: underline; margin-left: 10px;">
+                                Go to Setup/OAuth
+                            </a>
+                        {% endif %}
+                    {% elif opt_item.source.status == 'processing' %}
+                        <span style="color: blue;">Processing.</span>
+                        </br>Data source is being processed.
+                    {% else %}
+                        <span style="color: red;">Inactive.</span>
+                        </br>Data source is not yet active.
+                    {% endif %}
                 </li>
             {% else %}
                 <li>

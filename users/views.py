@@ -156,11 +156,13 @@ def get_active_studies_data(profile, request):
             
 
             if consent.is_optional:
+                # Optional consents are only shown in the optional section
+                if consent.consent_text_accepted and consent.data_source:
+                    consent_data['source'] = source
                 studies_data[study]['optional_consents'].append(consent_data)
             elif not consent.is_complete:
                 studies_data[study]['incomplete_consents'].append(consent_data)
             elif consent.data_source:
-                # data source created, so consent is given, but data source may need setup
                 instructions = source.get_instructions_card(request, consent_id=consent.id, study_id=study.id)
                 if source.status == 'pending' and instructions:
                     studies_data[study]['incomplete_sources'].append({
