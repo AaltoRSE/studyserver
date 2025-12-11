@@ -15,6 +15,8 @@ class AwareDataSourceAdmin(PolymorphicChildModelAdmin):
     base_model = DataSource
     show_in_index = True
     readonly_fields = COMMON_READ_ONLY_FIELDS
+    search_fields = ['device_id', 'device_label', 'name', 'profile__user__username']
+    list_display = ('name', 'device_id', 'device_label', 'status', 'profile')
 
 @admin.register(GooglePortabilityDataSource)
 class GooglePortabilityDataSourceAdmin(PolymorphicChildModelAdmin):
@@ -33,3 +35,5 @@ class TikTokPortabilityDataSourceAdmin(PolymorphicChildModelAdmin):
 class DataSourceAdmin(PolymorphicParentModelAdmin):
     base_model = DataSource
     child_models = (JsonUrlDataSource, AwareDataSource, GooglePortabilityDataSource)
+
+
