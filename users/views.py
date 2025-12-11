@@ -5,6 +5,8 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Group
 from django.apps import apps
+from django.contrib.auth import login
+from django.contrib.auth.forms import AuthenticationForm
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -13,13 +15,28 @@ from rest_framework.authtoken.models import Token
 from study_server.utils import data_to_csv_response
 from users.models import Profile
 from studies.models import Study, Consent
-from studies.forms import DataSourceSelectionForm
 from .forms import CustomUserCreationForm
 from studies.models import Consent
 from studies.views import study_detail
 from data_sources.models import get_display_type_from_source_type
 
 
+
+def login_view(request):
+    print("Login view called")
+    if request.method == 'POST':
+        form = AuthenticationForm(request, data=request.POST)
+        if form.is_valid():
+            user = form.get_user()
+            login(request, user)
+            return redirect('dashboard')
+        else:
+            messages.error(request, "Invalid username or password.")
+    else:
+        form = AuthenticationForm(request)
+    return render(request, 'users/login.html', {'form': form})
+    
+    
 def home(request):
     host = request.get_host().split(':')[0]
     try:
