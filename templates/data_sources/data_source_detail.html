@@ -35,19 +35,35 @@
 
 <div class="pagination">
     <span class="step-links">
-        {% if page_obj.has_previous %}
-            <a href="?page=1">&laquo; first</a>
-            <a href="?page={{ page_obj.previous_page_number }}">previous</a>
-        {% endif %}
-
-        <span class="current">
-            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
-        </span>
-
-        {% if page_obj.has_next %}
-            <a href="?page={{ page_obj.next_page_number }}">next</a>
-            <a href="?page={{ page_obj.paginator.num_pages }}">last &raquo;</a>
-        {% endif %}
+        {% with request.GET.urlencode as query %}
+            {% if query %}
+                {% with query|cut:'page='|cut:'&&' as base_query %}
+                    {% if page_obj.has_previous %}
+                        <a href="?{{ base_query }}&page=1">&laquo; first</a>
+                        <a href="?{{ base_query }}&page={{ page_obj.previous_page_number }}">previous</a>
+                    {% endif %}
+                    <span class="current">
+                        Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
+                    </span>
+                    {% if page_obj.has_next %}
+                        <a href="?{{ base_query }}&page={{ page_obj.next_page_number }}">next</a>
+                        <a href="?{{ base_query }}&page={{ page_obj.paginator.num_pages }}">last &raquo;</a>
+                    {% endif %}
+                {% endwith %}
+            {% else %}
+                {% if page_obj.has_previous %}
+                    <a href="?page=1">&laquo; first</a>
+                    <a href="?page={{ page_obj.previous_page_number }}">previous</a>
+                {% endif %}
+                <span class="current">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
+                </span>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}">next</a>
+                    <a href="?page={{ page_obj.paginator.num_pages }}">last &raquo;</a>
+                {% endif %}
+            {% endif %}
+        {% endwith %}
     </span>
 </div>
 {% elif form.is_valid and form.cleaned_data.data_type %}
