@@ -1,3 +1,5 @@
+{% load static %}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,22 +18,46 @@
     <h1>AWARE Device Setup</h1>
 
     <ol>
+        <li> Download the Aware app. If you are not sure which version to download, try the arm64 version first.
+            <ul>
         <li>
-        <a href="{% url 'download_static_file' 'aware/AWARE-Light-4.7.2-arm64.apk' %}">
-            <button>Download AWARE-Light App</button>
-        </a>
+        <a href="{% url 'download_static_file' 'aware/AWARE-Light-4.7.2-arm64.apk' %}"> AWARE-Light-4.7.2-arm64.apk
+        </li>
+        <li>
+        <a href="{% url 'download_static_file' 'aware/AWARE-Light-4.7.2-armeabi.apk' %}"> AWARE-Light-4.7.2-armeabi.apk
+        </li>
+            </ul>
         </li>
 
         <li>
-            Install the AWARE app on your mobile device. Your phone may warn 
-            you about installing apps from unknown sources; select advanced
-            and install anyway. 
+            <p>
+            To install the app after downloading, open downloads in your phones browser menu and open the downloaded file.
+            </p>
+
+            <p>
+            Since Aware is downloaded from outside the Google Play Store, you may see the
+            following warning:
+            
+            <img src="{% static 'images/aware_install_warning.png' %}" alt="" style="max-width: 100%; height: auto;"/>
+            </p>
+            
+            <p>
+            Aware is safe to install. Select "more details" and "Install anyway" to proceed with the installation.
+            </p>
+
+            <p>
+            If you do not see this option, you may need to enable installation from unknown sources in your phone settings. Open settings and search for "unknown apps" to find the setting. Turn on "install unknown apps" for your browser (e.g., Chrome).
+            </p>
         </li>
 
         <li>
-        Open the AWARE app. Allow data access permissions when prompted.
-        </li>
+            <p>Open the AWARE app. It will prompt you to allow permissions. Allow all requested permissions.</p>
 
+            <p>The app requires access to accessibility features on your phone. It will open accessibility settings; go to Installed apps and enable "Aware".</p>
+
+            <p>If accessibility features are restricted, you cannot directly enable aware. Go to Settings &gt; Apps &gt; Aware &gt; three dots menu (top right corner) &gt; Allow restricted settings. Then try enabling accessibility features (restarting the app brings you back to the menu).</p>
+        </li>
+        
         <li>
             <p>
                 In the AWARE app, select "Join a Study". The app will ask for a URL. Copy the following URL and paste it into the AWARE app:
