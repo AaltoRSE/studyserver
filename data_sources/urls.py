@@ -12,7 +12,6 @@ urlpatterns = [
     path('<int:source_id>/confirm/', views.confirm_data_source, name='confirm_data_source'),
     path('config/<uuid:token>/<str:view_type>/', views.token_view_dispatcher, name='datasource_token_view'),
 
-
     path('oauth/start/<int:source_id>/', views.auth_start, name='auth_start'),
     path('oauth/callback/', views.auth_callback, name='auth_callback'),
 ]
