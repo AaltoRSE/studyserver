@@ -60,16 +60,16 @@ class AwareDataSource(DataSource):
         if self.status == 'active':
             return (True, "This device is already active.")
 
-        retrieved_device_id = db_connector.get_device_id_for_label(self.device_label)
+        retrieved_device_ids = db_connector.get_device_ids_for_label(self.device_label)
 
-        if not retrieved_device_id:
+        if not retrieved_device_ids:
             return (False, "No data with that device label. It may take a few hours for data to appear. Please ensure AWARE is running on your device.") 
 
-        is_claimed = AwareDataSource.objects.filter(device_id=retrieved_device_id).exclude(id=self.id).exists()
+        is_claimed = AwareDataSource.objects.filter(device_id__in=retrieved_device_ids).exclude(id=self.id).exists()
         if is_claimed:
             return (False, "Error: This device ID has already been claimed by another user. Contact the administrator if you believe this is an error.")
         
-        self.device_id = retrieved_device_id
+        self.device_id = retrieved_device_ids[0]
         self.status = 'active'
         self.save()
         return (True, "AWARE device confirmed and linked successfully!")
@@ -81,9 +81,7 @@ class AwareDataSource(DataSource):
     
     def confirm(self, request):
         result, message = self.check_for_device()
-        if not result:
-            messages.error(request, message)
-        return redirect('dashboard')
+        return result, message
 
     def handle_token_view(self, request, token, view_type):
         if str(self.config_token) != str(token):
@@ -164,18 +162,18 @@ class AwareDataSource(DataSource):
     
     def get_data_types(self):
         """  Returns a list of available data type names for this source. """
+        print("Getting AWARE data types...", self.device_label)
         if self.status == 'active' and self.device_id:
-            device_id_str = str(self.device_id)
-            tables = db_connector.get_aware_tables(device_id_str)
+            tables = db_connector.get_aware_tables(self.device_label)
             return tables if tables else []
         return []
 
     
     def fetch_data(self, data_type='battery', limit=10000, start_date=None, end_date=None):
         """Get's the users data from the AWARE server"""
+        print("Getting AWARE data...", self.device_label)
         if self.status == 'active' and self.device_id:
-            device_id_str = str(self.device_id)
             return db_connector.get_aware_data(
-                device_id_str, data_type, limit, start_date, end_date
+                self.device_label, data_type, limit, start_date, end_date
             )
         return []

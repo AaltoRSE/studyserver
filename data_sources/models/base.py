@@ -53,7 +53,7 @@ class DataSource(PolymorphicModel):
     
     def confirm(self, request):
         """Confirm the source and download any initial data if needed."""
-        return None
+        return None, None
     
     def has_active_consent(self):
         Consent = apps.get_model('studies', 'Consent')

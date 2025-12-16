@@ -304,12 +304,7 @@ class GooglePortabilityDataSource(DataSource):
         """User-facing method with messages and redirects."""
         success, message = self.download_data_files()
         
-        if success:
-            messages.success(request, message)
-        else:
-            messages.error(request, message)
-        
-        return redirect('dashboard')
+        return success, message
             
 
     def extract_and_process(self):
