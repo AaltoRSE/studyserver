@@ -72,10 +72,12 @@ def get_aware_tables(device_label):
 
                     rows = cursor.fetchall()
                     device_uids = [row[0] for row in rows if isinstance(row, tuple) and len(row) > 0]
+                    print(device_ids, device_uids)
                     if not device_uids:
                         continue
 
-                    query = f"SELECT 1 FROM `{table_name}` WHERE {column_to_check} IN ({device_id_format}) LIMIT 1"
+                    device_uid_format = ",".join(["%s"] * len(device_uids))
+                    query = f"SELECT 1 FROM `{table_name}` WHERE {column_to_check} IN ({device_uid_format}) LIMIT 1"
                     cursor.execute(query, tuple(device_uids))
 
                     if cursor.fetchone():
