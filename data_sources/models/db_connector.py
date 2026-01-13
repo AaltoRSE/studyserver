@@ -72,7 +72,6 @@ def get_aware_tables(device_label):
 
                     rows = cursor.fetchall()
                     device_uids = [row[0] for row in rows if isinstance(row, tuple) and len(row) > 0]
-                    print(device_ids, device_uids)
                     if not device_uids:
                         continue
 
