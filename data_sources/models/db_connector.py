@@ -166,6 +166,7 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         )
         rows = cursor.fetchall()
         device_uids = [row['id'] for row in rows if isinstance(row, dict) and len(row) > 0]
+        device_uid_to_id = {duid: did for did, duid in zip(device_ids, device_uids)}
 
         if device_uids:
             query = (
@@ -185,7 +186,11 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
             params.append(limit)
 
             cursor.execute(query, tuple(params))
-            results.extend(cursor.fetchall())
+            results_transformed = cursor.fetchall()
+            for row in results_transformed:
+                row['device_id'] = device_uid_to_id.get(row['device_uid'], None)
+                row.pop('device_uid', None)
+            results.extend(results_transformed)
 
         cursor.close()
         database.close()
