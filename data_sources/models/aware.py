@@ -65,7 +65,7 @@ class AwareDataSource(DataSource):
         if not retrieved_device_ids:
             return (False, "No data with that device label. It may take a few hours for data to appear. Please ensure AWARE is running on your device.") 
 
-        is_claimed = AwareDataSource.objects.filter(device_id__in=retrieved_device_ids).exclude(id=self.id).exists()
+        is_claimed = AwareDataSource.objects.filter(device_id__in=retrieved_device_ids).exclude(id=self.id).exclude(profile=self.profile).exists()
         if is_claimed:
             return (False, "Error: This device ID has already been claimed by another user. Contact the administrator if you believe this is an error.")
         
