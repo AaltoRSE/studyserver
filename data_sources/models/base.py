@@ -1,6 +1,7 @@
 import uuid
 from django.apps import apps
 from django.db import models
+from django.core.exceptions import ValidationError
 from polymorphic.models import PolymorphicModel
 from users.models import Profile
 
@@ -26,10 +27,18 @@ class DataSource(PolymorphicModel):
     requires_confirmation = False
     requires_setup = False
 
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=['device_id', 'profile'], name='unique_device_per_user')
-        ]
+    def save(self, *args, **kwargs):
+        # Check if device_id already exists for a different user
+        if self.device_id:
+            existing = DataSource.objects.filter(device_id=self.device_id).exclude(id=self.id)
+            if existing.exists():
+                # Check if any of the existing records belong to a different user
+                if existing.exclude(profile_id=self.profile_id).exists():
+                    raise ValidationError(
+                        "This device ID has already been claimed by another user. "
+                        "Contact the administrator if you believe this is an error."
+                    )
+        super().save(*args, **kwargs)
 
     @property
     def model_name(self):
