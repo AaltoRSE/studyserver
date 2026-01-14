@@ -26,6 +26,11 @@ class DataSource(PolymorphicModel):
     requires_confirmation = False
     requires_setup = False
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['device_id', 'profile'], name='unique_device_per_user')
+        ]
+
     @property
     def model_name(self):
         """Returns the simple class name of the real instance."""
