@@ -152,7 +152,8 @@ def get_aware_tables(device_label):
             for device_id in device_ids:
                 query_params = {
                     'table': table_name,
-                    'device_id': device_id
+                    'device_id': device_id,
+                    'limit': 1
                 }
                 
                 response = requests.get(
@@ -176,7 +177,8 @@ def get_aware_tables(device_label):
                     device_uid = device_id_to_uid[device_id]
                     query_params = {
                         'table': transformed_table,
-                        'device_uid': device_uid
+                        'device_uid': device_uid,
+                        'limit': 1
                     }
                     
                     response = requests.get(
@@ -189,8 +191,8 @@ def get_aware_tables(device_label):
                     if response.status_code == 200:
                         data = response.json()
                         records = data.get('data', [])
-                        if records and transformed_table not in tables_with_data:
-                            tables_with_data.append(transformed_table)
+                        if records and table_name not in tables_with_data:
+                            tables_with_data.append(table_name)
                             break
 
         logger.info(f"Retrieved {len(tables_with_data)} tables for label: {device_label}")
@@ -229,7 +231,7 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         for device_id in device_ids:
             lookup_params = {
                 'table': 'device_lookup',
-                'device_uuid': device_id
+                'device_uuid': device_id,
             }
             
             response = requests.get(
@@ -250,7 +252,8 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         for device_id in device_ids:
             query_params = {
                 'table': table_name,
-                'device_id': device_id
+                'device_id': device_id,
+                'limit': limit
             }
 
             # Add time filters if provided
@@ -282,7 +285,8 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
                 
                 transformed_params = {
                     'table': transformed_table_name,
-                    'device_uid': device_uid
+                    'device_uid': device_uid,
+                    'limit': limit
                 }
                 
                 if start_date:
