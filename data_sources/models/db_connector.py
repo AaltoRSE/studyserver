@@ -67,7 +67,7 @@ def get_device_ids_for_label(device_label):
         return []
 
     try:
-        # Query the aware_devices table for devices matching this label
+        # Query the aware_device table for devices matching this label
         headers = _get_headers()
         if not headers:
             logger.error("Failed to obtain authentication token")
@@ -76,7 +76,7 @@ def get_device_ids_for_label(device_label):
         response = requests.get(
             f"{AWARE_FILTER_BASE_URL}/data",
             params={
-                'table': 'aware_devices',
+                'table': 'aware_device',
                 'label': device_label
             },
             headers=headers,
