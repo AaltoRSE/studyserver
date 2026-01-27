@@ -174,7 +174,7 @@ def get_active_studies_data(profile, request):
 
             if consent.is_optional:
                 # Optional consents are only shown in the optional section
-                if consent.consent_text_accepted and consent.data_source:
+                if consent.data_source:
                     consent_data['source'] = source
                 studies_data[study]['optional_consents'].append(consent_data)
             elif not consent.is_complete:

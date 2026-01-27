@@ -79,11 +79,6 @@ You have enrolled in {{ study.title }}.
                     {% elif opt_item.source.status == 'pending' %}
                         <span style="color: orange;">Pending Setup.</span>
                         </br>Setup is required for this data source.
-                        {% if opt_item.source.get_setup_url %}
-                            <a href="{{ opt_item.source.get_setup_url }}?consent_id={{ opt_item.consent.id }}" style="color: blue; text-decoration: underline; margin-left: 10px;">
-                                Go to Setup/OAuth
-                            </a>
-                        {% endif %}
                     {% elif opt_item.source.status == 'processing' %}
                         <span style="color: blue;">Processing.</span>
                         </br>Data source is being processed.

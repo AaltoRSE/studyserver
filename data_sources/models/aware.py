@@ -120,17 +120,24 @@ class AwareDataSource(DataSource):
                     "researcher_last": "Rantaharju",
                     "researcher_contact": "<jarno.rantaharju@aalto.fi>"
                 },
-                "database": {
-                    "rootPassword": "-",
-                    "rootUsername": "-",
-                    "database_host": settings.AWARE_DB_HOST,
-                    "database_port": settings.AWARE_DB_PORT,
-                    "database_name": settings.AWARE_DB_NAME,
-                    "database_password": settings.AWARE_DB_INSERT_PASSWORD,
-                    "database_username": settings.AWARE_DB_INSERT_USER,
-                    "require_ssl": True,
-                    "config_without_password": False
+                "webservice": {
+                  "webservice_server": f"aware.cs.aalto.fi/webservice/{settings.AWARE_DB_INSERT_PASSWORD}",
+                  "webservice_wifi_only": False,
+                  "webservice_charging": False,
+                  "frequency_webservice": 60,
+                  "webservice_silent": False
                 },
+                #"database": {
+                #    "rootPassword": "-",
+                #    "rootUsername": "-",
+                #    "database_host": settings.AWARE_DB_HOST,
+                #    "database_port": settings.AWARE_DB_PORT,
+                #    "database_name": settings.AWARE_DB_NAME,
+                #    "database_password": settings.AWARE_DB_INSERT_PASSWORD,
+                #    "database_username": settings.AWARE_DB_INSERT_USER,
+                #    "require_ssl": True,
+                #    "config_without_password": False
+                #},
                 "createdAt": "",
                 "updatedAt": "2025-09-25T12:30:13.411Z",
                 "questions": [],

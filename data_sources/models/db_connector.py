@@ -1,202 +1,194 @@
-import mysql.connector
+import requests
+import logging
+import os
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# AWARE Filter API configuration
+AWARE_FILTER_HOST = os.getenv('AWARE_FILTER_HOST', getattr(settings, 'AWARE_FILTER_HOST', 'localhost'))
+AWARE_FILTER_PORT = os.getenv('AWARE_FILTER_PORT', getattr(settings, 'AWARE_FILTER_PORT', '8080'))
+AWARE_FILTER_BASE_URL = f"https://{AWARE_FILTER_HOST}:{AWARE_FILTER_PORT}"
+STUDY_PASSWORD = os.getenv('STUDY_PASSWORD', getattr(settings, 'STUDY_PASSWORD', ''))
+
+_cached_token = None
+
+
+def _get_auth_token():
+    """
+    Retrieve or refresh the JWT token for API authentication.
+    Caches the token for reuse.
+    """
+    global _cached_token
+    
+    if _cached_token:
+        return _cached_token
+    
+    try:
+        response = requests.post(
+            f"{AWARE_FILTER_BASE_URL}/login",
+            json={"password": STUDY_PASSWORD}
+        )
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            _cached_token = token_data.get('token')
+            logger.info("Successfully authenticated with AWARE Filter API")
+            return _cached_token
+        else:
+            logger.error(f"Authentication failed: {response.status_code} - {response.text}")
+            return None
+            
+    except requests.RequestException as e:
+        logger.error(f"Error authenticating with AWARE Filter API: {e}")
+        return None
+
+
+def _get_headers():
+    """Get headers with Bearer token for API requests."""
+    token = _get_auth_token()
+    if not token:
+        return None
+    
+    return {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
 
 
 def get_device_ids_for_label(device_label):
     """Gets a list of device_ids associated with the given device_label."""
     if not device_label:
-        print("Invalid AWARE device label provided.", device_label)
+        logger.warning("Invalid AWARE device label provided.")
         return []
 
-    device_ids = []
     try:
-        database = mysql.connector.connect(
-            host=settings.AWARE_DB_HOST,
-            port=settings.AWARE_DB_PORT,
-            user=settings.AWARE_DB_RO_USER,
-            password=settings.AWARE_DB_RO_PASSWORD,
-            database=settings.AWARE_DB_NAME
+        # Query the device_lookup table for devices matching this label
+        headers = _get_headers()
+        if not headers:
+            logger.error("Failed to obtain authentication token")
+            return []
+        
+        response = requests.get(
+            f"{AWARE_FILTER_BASE_URL}/query",
+            params={
+                'table_name': 'device_lookup',
+                'device_label': device_label
+            },
+            headers=headers
         )
-        cursor = database.cursor()
-
-        query = "SELECT device_id FROM aware_device WHERE label = %s"
-        cursor.execute(query, (device_label,))
-        rows = cursor.fetchall()
-        device_ids = [row[0] for row in rows]
-
-        cursor.close()
-        database.close()
-        return device_ids
-
-    except mysql.connector.Error as e:
-        print(f"Error in get_device_ids_for_label: {e}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            device_ids = [item['device_id'] for item in data.get('data', []) 
+                         if 'device_id' in item]
+            logger.info(f"Retrieved {len(device_ids)} device IDs for label: {device_label}")
+            return device_ids
+        else:
+            logger.error(f"Failed to retrieve device IDs: {response.status_code} - {response.text}")
+            return []
+            
+    except requests.RequestException as e:
+        logger.error(f"Error retrieving device IDs for label {device_label}: {e}")
         return []
 
 
 def get_aware_tables(device_label):
-    """ Gets a list of available tables that have data for the given device_label. """
+    """Gets a list of available tables that have data for the given device_label."""
     if not device_label:
-        print("Invalid AWARE device label provided.", device_label)
+        logger.warning("Invalid AWARE device label provided.")
         return []
 
     device_ids = get_device_ids_for_label(device_label)
     if not device_ids:
+        logger.info(f"No devices found for label: {device_label}")
         return []
 
     tables_with_data = []
+    headers = _get_headers()
+    if not headers:
+        logger.error("Failed to obtain authentication token")
+        return []
+
     try:
-        database = mysql.connector.connect(
-            host=settings.AWARE_DB_HOST,
-            port=settings.AWARE_DB_PORT,
-            user=settings.AWARE_DB_RO_USER,
-            password=settings.AWARE_DB_RO_PASSWORD,
-            database=settings.AWARE_DB_NAME
-        )
-        cursor = database.cursor()
-
-        cursor.execute("SHOW TABLES")
-        all_tables = [table[0] for table in cursor.fetchall()]
-        for table_name in all_tables:
-            is_transformed = table_name.endswith("_transformed")
-            column_to_check = "device_uid" if is_transformed else "device_id"
-
-            if is_transformed:
-                try:
-                    table_name_without_suffix = table_name.replace("_transformed", "")
-                    device_id_format = ",".join(["%s"] * len(device_ids))
-                    query_string = f"SELECT id FROM device_lookup WHERE device_uuid IN ({device_id_format})"
-                    cursor.execute(
-                        query_string,
-                        tuple(device_ids)
-                    )
-
-                    rows = cursor.fetchall()
-                    device_uids = [row[0] for row in rows if isinstance(row, tuple) and len(row) > 0]
-                    if not device_uids:
-                        continue
-
-                    device_uid_format = ",".join(["%s"] * len(device_uids))
-                    query = f"SELECT 1 FROM `{table_name}` WHERE {column_to_check} IN ({device_uid_format}) LIMIT 1"
-                    cursor.execute(query, tuple(device_uids))
-
-                    if cursor.fetchone():
-                        tables_with_data.append(table_name_without_suffix)
-
-                except mysql.connector.Error:
-                    continue
-                    
+        # Query the tables endpoint to get available tables for these devices
+        for device_id in device_ids:
+            response = requests.get(
+                f"{AWARE_FILTER_BASE_URL}/tables",
+                params={'device_id': device_id},
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                tables = data.get('tables', [])
+                for table in tables:
+                    if table not in tables_with_data:
+                        tables_with_data.append(table)
             else:
-                try:
-                    query = f"SELECT 1 FROM `{table_name}` WHERE {column_to_check} IN ({','.join(['%s'] * len(device_ids))}) LIMIT 1"
-                    cursor.execute(query, tuple(device_ids))
+                logger.warning(f"Failed to retrieve tables for device {device_id}: {response.status_code}")
 
-                    if cursor.fetchone():
-                        tables_with_data.append(table_name)
-
-                except mysql.connector.Error:
-                    continue
-
-        cursor.close()
-        database.close()
+        logger.info(f"Retrieved {len(tables_with_data)} tables for label: {device_label}")
         return tables_with_data
-
-    except mysql.connector.Error as e:
-        print(f"Error in get_aware_tables: {e}")
+        
+    except requests.RequestException as e:
+        logger.error(f"Error retrieving tables for label {device_label}: {e}")
         return []
 
 
 def get_aware_data(device_label, table_name='battery', limit=1000, start_date=None, end_date=None):
     """
-    Connects to the AWARE DB and fetches the latest records for a specific
-    AWARE device ID. Returns a list of dictionaries.
+    Retrieves records from the AWARE Filter API for a specific device label and table.
+    Returns a list of dictionaries.
     """
     if not device_label:
-        print("Invalid AWARE device label provided.", device_label)
+        logger.warning("Invalid AWARE device label provided.")
         return []
 
     device_ids = get_device_ids_for_label(device_label)
+    if not device_ids:
+        logger.warning(f"No devices found for label: {device_label}")
+        return []
+
     results = []
+    headers = _get_headers()
+    if not headers:
+        logger.error("Failed to obtain authentication token")
+        return []
 
     try:
-        database = mysql.connector.connect(
-            host=settings.AWARE_DB_HOST,
-            port=settings.AWARE_DB_PORT,
-            user=settings.AWARE_DB_RO_USER,
-            password=settings.AWARE_DB_RO_PASSWORD,
-            database=settings.AWARE_DB_NAME
-        )
-        cursor = database.cursor()
+        # Prepare query parameters
+        query_params = {
+            'table_name': table_name,
+            'device_id': device_ids[0]  # Use the first device ID
+        }
 
-        cursor.execute("SHOW TABLES")
-        all_tables = [table[0] for table in cursor.fetchall()]
-
-        if table_name not in all_tables and f"{table_name}_transformed" not in all_tables:
-            print(f"Table {table_name} does not exist in AWARE database.")
-            return []
-        cursor.close()
-
-        cursor = database.cursor(dictionary=True)
-        # Query the original table
-        query = (
-            f"SELECT * FROM {table_name} "
-            f"WHERE device_id IN ({','.join(['%s'] * len(device_ids))}) "
-        )
-        params = list(device_ids)
-
+        # Add time filters if provided
         if start_date:
-            query += " AND timestamp >= %s"
-            params.append(start_date.timestamp() * 1000) 
+            query_params['start_time'] = int(start_date.timestamp() * 1000)
         if end_date:
-            query += " AND timestamp <= %s"
-            params.append(end_date.timestamp() * 1000)
+            query_params['end_time'] = int(end_date.timestamp() * 1000)
 
-        query += " ORDER BY timestamp DESC LIMIT %s"
-        params.append(limit)
-
-        cursor.execute(query, tuple(params))
-        results.extend(cursor.fetchall())
-
-        # Query the transformed table
-        transformed_table_name = f"{table_name}_transformed"
-        device_id_format = ",".join(["%s"] * len(device_ids))
-        query_string = f"SELECT id FROM device_lookup WHERE device_uuid IN ({device_id_format})"
-        cursor.execute(
-            query_string,
-            tuple(device_ids)
+        # Query the data from the API
+        response = requests.get(
+            f"{AWARE_FILTER_BASE_URL}/query",
+            params=query_params,
+            headers=headers
         )
-        rows = cursor.fetchall()
-        device_uids = [row['id'] for row in rows if isinstance(row, dict) and len(row) > 0]
-        device_uid_to_id = {duid: did for did, duid in zip(device_ids, device_uids)}
 
-        if device_uids:
-            query = (
-                f"SELECT * FROM {transformed_table_name} "
-                f"WHERE device_uid IN ({','.join(['%s'] * len(device_uids))}) "
-            )
-            params = list(device_uids)
-
-            if start_date:
-                query += " AND timestamp >= %s"
-                params.append(start_date.timestamp() * 1000) 
-            if end_date:
-                query += " AND timestamp <= %s"
-                params.append(end_date.timestamp() * 1000)
-
-            query += " ORDER BY timestamp DESC LIMIT %s"
-            params.append(limit)
-
-            cursor.execute(query, tuple(params))
-            results_transformed = cursor.fetchall()
-            for row in results_transformed:
-                row['device_id'] = device_uid_to_id.get(row['device_uid'], None)
-                row.pop('device_uid', None)
-            results.extend(results_transformed)
-
-        cursor.close()
-        database.close()
+        if response.status_code == 200:
+            data = response.json()
+            records = data.get('data', [])
+            
+            # Apply limit if needed (API may not support it, so apply client-side)
+            results = records[:limit] if limit else records
+            logger.info(f"Retrieved {len(results)} records from table {table_name} for device {device_label}")
+            
+        else:
+            logger.error(f"Failed to retrieve data from {table_name}: {response.status_code} - {response.text}")
 
         return results
 
-    except mysql.connector.Error as e:
-        print(f"Error connecting to Aware database: {e}")
+    except requests.RequestException as e:
+        logger.error(f"Error retrieving data from AWARE Filter API for table {table_name}: {e}")
         return results
