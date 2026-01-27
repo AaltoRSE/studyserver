@@ -7,9 +7,12 @@ logger = logging.getLogger(__name__)
 
 # AWARE Filter API configuration
 AWARE_FILTER_HOST = os.getenv('AWARE_FILTER_HOST', getattr(settings, 'AWARE_FILTER_HOST', 'localhost'))
-AWARE_FILTER_PORT = os.getenv('AWARE_FILTER_PORT', getattr(settings, 'AWARE_FILTER_PORT', '8080'))
+AWARE_FILTER_PORT = os.getenv('AWARE_FILTER_PORT', getattr(settings, 'AWARE_FILTER_PORT', '3446'))
 AWARE_FILTER_BASE_URL = f"https://{AWARE_FILTER_HOST}:{AWARE_FILTER_PORT}"
 STUDY_PASSWORD = os.getenv('STUDY_PASSWORD', getattr(settings, 'STUDY_PASSWORD', ''))
+
+# Disable SSL warnings for self-signed certificates
+requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 
 _cached_token = None
 
@@ -27,7 +30,8 @@ def _get_auth_token():
     try:
         response = requests.post(
             f"{AWARE_FILTER_BASE_URL}/login",
-            json={"password": STUDY_PASSWORD}
+            json={"password": STUDY_PASSWORD},
+            verify=False
         )
         
         if response.status_code == 200:
@@ -70,12 +74,13 @@ def get_device_ids_for_label(device_label):
             return []
         
         response = requests.get(
-            f"{AWARE_FILTER_BASE_URL}/query",
+            f"{AWARE_FILTER_BASE_URL}/data",
             params={
-                'table_name': 'device_lookup',
+                'table': 'device_lookup',
                 'device_label': device_label
             },
-            headers=headers
+            headers=headers,
+            verify=False
         )
         
         if response.status_code == 200:
@@ -114,9 +119,10 @@ def get_aware_tables(device_label):
         # Query the tables endpoint to get available tables for these devices
         for device_id in device_ids:
             response = requests.get(
-                f"{AWARE_FILTER_BASE_URL}/tables",
+                f"{AWARE_FILTER_BASE_URL}/data",
                 params={'device_id': device_id},
-                headers=headers
+                headers=headers,
+                verify=False
             )
             
             if response.status_code == 200:
@@ -150,43 +156,48 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         logger.warning(f"No devices found for label: {device_label}")
         return []
 
-    results = []
     headers = _get_headers()
     if not headers:
         logger.error("Failed to obtain authentication token")
         return []
 
+    results = []
+
     try:
-        # Prepare query parameters
-        query_params = {
-            'table_name': table_name,
-            'device_id': device_ids[0]  # Use the first device ID
-        }
+        # Query the data for each device ID
+        for device_id in device_ids:
+            query_params = {
+                'table': table_name,
+                'device_id': device_id
+            }
 
-        # Add time filters if provided
-        if start_date:
-            query_params['start_time'] = int(start_date.timestamp() * 1000)
-        if end_date:
-            query_params['end_time'] = int(end_date.timestamp() * 1000)
+            # Add time filters if provided
+            if start_date:
+                query_params['start_time'] = int(start_date.timestamp() * 1000)
+            if end_date:
+                query_params['end_time'] = int(end_date.timestamp() * 1000)
 
-        # Query the data from the API
-        response = requests.get(
-            f"{AWARE_FILTER_BASE_URL}/query",
-            params=query_params,
-            headers=headers
-        )
+            # Query the data from the API using the correct endpoint
+            response = requests.get(
+                f"{AWARE_FILTER_BASE_URL}/data",
+                params=query_params,
+                headers=headers,
+                verify=False
+            )
 
-        if response.status_code == 200:
-            data = response.json()
-            records = data.get('data', [])
-            
-            # Apply limit if needed (API may not support it, so apply client-side)
-            results = records[:limit] if limit else records
-            logger.info(f"Retrieved {len(results)} records from table {table_name} for device {device_label}")
-            
-        else:
-            logger.error(f"Failed to retrieve data from {table_name}: {response.status_code} - {response.text}")
+            if response.status_code == 200:
+                data = response.json()
+                records = data.get('data', [])
+                results.extend(records)
+                logger.info(f"Retrieved {len(records)} records from table {table_name} for device {device_id}")
+            else:
+                logger.error(f"Failed to retrieve data from {table_name} for device {device_id}: {response.status_code} - {response.text}")
 
+        # Apply limit if needed (API may not support it, so apply client-side)
+        if limit:
+            results = results[:limit]
+        
+        logger.info(f"Total: retrieved {len(results)} records from table {table_name} for device label {device_label}")
         return results
 
     except requests.RequestException as e:
