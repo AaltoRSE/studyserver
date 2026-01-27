@@ -116,23 +116,82 @@ def get_aware_tables(device_label):
         return []
 
     try:
-        # Query the tables endpoint to get available tables for these devices
+        # Build mapping of device_id to device_uid from device_lookup table
+        device_id_to_uid = {}
+        
         for device_id in device_ids:
+            lookup_params = {
+                'table': 'device_lookup',
+                'device_uuid': device_id
+            }
+            
             response = requests.get(
                 f"{AWARE_FILTER_BASE_URL}/data",
-                params={'device_id': device_id},
+                params=lookup_params,
                 headers=headers,
                 verify=False
             )
             
             if response.status_code == 200:
-                data = response.json()
-                tables = data.get('tables', [])
-                for table in tables:
-                    if table not in tables_with_data:
-                        tables_with_data.append(table)
-            else:
-                logger.warning(f"Failed to retrieve tables for device {device_id}: {response.status_code}")
+                lookup_data = response.json()
+                lookup_records = lookup_data.get('data', [])
+                if lookup_records and 'id' in lookup_records[0]:
+                    device_id_to_uid[device_id] = lookup_records[0]['id']
+        
+        # Common AWARE sensor tables to check
+        common_tables = [
+            'accelerometer', 'ambient_light', 'ambient_temperature', 'ambient_pressure',
+            'ambient_humidity', 'battery', 'bluetooth', 'call_logs', 'gyroscope',
+            'light', 'linear_accelerometer', 'location', 'magnetometer', 'proximity',
+            'screen', 'sms_logs', 'temperature', 'time_zone', 'pressure',
+            'plugin_hops', 'wifi'
+        ]
+        
+        # Check each common table for each device_id
+        for table_name in common_tables:
+            for device_id in device_ids:
+                query_params = {
+                    'table': table_name,
+                    'device_id': device_id
+                }
+                
+                response = requests.get(
+                    f"{AWARE_FILTER_BASE_URL}/data",
+                    params=query_params,
+                    headers=headers,
+                    verify=False
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    records = data.get('data', [])
+                    if records and table_name not in tables_with_data:
+                        tables_with_data.append(table_name)
+                        break  # Found data for this table, no need to check other devices
+            
+            # Also check the transformed version of the table
+            transformed_table = f"{table_name}_transformed"
+            for device_id in device_ids:
+                if device_id in device_id_to_uid:
+                    device_uid = device_id_to_uid[device_id]
+                    query_params = {
+                        'table': transformed_table,
+                        'device_uid': device_uid
+                    }
+                    
+                    response = requests.get(
+                        f"{AWARE_FILTER_BASE_URL}/data",
+                        params=query_params,
+                        headers=headers,
+                        verify=False
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        records = data.get('data', [])
+                        if records and transformed_table not in tables_with_data:
+                            tables_with_data.append(transformed_table)
+                            break
 
         logger.info(f"Retrieved {len(tables_with_data)} tables for label: {device_label}")
         return tables_with_data
