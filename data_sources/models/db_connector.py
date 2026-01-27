@@ -77,7 +77,7 @@ def get_device_ids_for_label(device_label):
             f"{AWARE_FILTER_BASE_URL}/data",
             params={
                 'table': 'device_lookup',
-                'device_label': device_label
+                'label': device_label
             },
             headers=headers,
             verify=False
@@ -164,27 +164,6 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
     results = []
 
     try:
-        # Build mapping of device_id to device_uid from device_lookup table
-        device_id_to_uid = {}
-        lookup_params = {
-            'table': 'device_lookup'
-        }
-        
-        response = requests.get(
-            f"{AWARE_FILTER_BASE_URL}/data",
-            params=lookup_params,
-            headers=headers,
-            verify=False
-        )
-        
-        if response.status_code == 200:
-            lookup_data = response.json()
-            lookup_records = lookup_data.get('data', [])
-            for record in lookup_records:
-                if 'device_uuid' in record and 'id' in record:
-                    # Map device_uuid (stored as device_id in device_lookup) to device_uid (id)
-                    device_id_to_uid[record['device_uuid']] = record['id']
-        
         # Query the data for each device ID
         for device_id in device_ids:
             query_params = {
@@ -213,38 +192,6 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
                 logger.info(f"Retrieved {len(records)} records from table {table_name} for device {device_id}")
             else:
                 logger.error(f"Failed to retrieve data from {table_name} for device {device_id}: {response.status_code} - {response.text}")
-
-            # Query the transformed table if device_uid mapping exists
-            if device_id in device_id_to_uid:
-                device_uid = device_id_to_uid[device_id]
-                transformed_table_name = f"{table_name}_transformed"
-                
-                transformed_params = {
-                    'table': transformed_table_name,
-                    'device_uid': device_uid
-                }
-                
-                if start_date:
-                    transformed_params['start_time'] = int(start_date.timestamp() * 1000)
-                if end_date:
-                    transformed_params['end_time'] = int(end_date.timestamp() * 1000)
-                
-                response = requests.get(
-                    f"{AWARE_FILTER_BASE_URL}/data",
-                    params=transformed_params,
-                    headers=headers,
-                    verify=False
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    transformed_records = data.get('data', [])
-                    # Map device_uid back to device_id for consistency
-                    for record in transformed_records:
-                        record['device_id'] = device_id
-                        record.pop('device_uid', None)
-                    results.extend(transformed_records)
-                    logger.info(f"Retrieved {len(transformed_records)} records from table {transformed_table_name} for device {device_id}")
 
         # Apply limit if needed (API may not support it, so apply client-side)
         if limit:
