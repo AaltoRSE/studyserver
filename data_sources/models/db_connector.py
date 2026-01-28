@@ -116,97 +116,45 @@ def get_aware_tables(device_label):
         return []
 
     try:
-        # Build mapping of device_id to device_uid from device_lookup table
-        device_id_to_uid = {}
-        
+        # Use the /tables-for-device endpoint for each device_id
         for device_id in device_ids:
-            lookup_params = {
-                'table': 'device_lookup',
-                'device_uuid': device_id
-            }
-            
             response = requests.get(
-                f"{AWARE_FILTER_BASE_URL}/data",
-                params=lookup_params,
+                f"{AWARE_FILTER_BASE_URL}/tables-for-device",
+                params={'device_id': device_id},
                 headers=headers,
                 verify=False
             )
             
             if response.status_code == 200:
-                lookup_data = response.json()
-                lookup_records = lookup_data.get('data', [])
-                if lookup_records and 'id' in lookup_records[0]:
-                    device_id_to_uid[device_id] = lookup_records[0]['id']
-        
-        # Common AWARE sensor tables to check
-        common_tables = [
-            'accelerometer', 'ambient_light', 'ambient_temperature', 'ambient_pressure',
-            'ambient_humidity', 'battery', 'bluetooth', 'call_logs', 'gyroscope',
-            'light', 'linear_accelerometer', 'location', 'magnetometer', 'proximity',
-            'screen', 'sms_logs', 'temperature', 'time_zone', 'pressure',
-            'plugin_hops', 'wifi'
-        ]
-        
-        # Check each common table for each device_id
-        for table_name in common_tables:
-            for device_id in device_ids:
-                query_params = {
-                    'table': table_name,
-                    'device_id': device_id,
-                    'limit': 1
-                }
-                
-                response = requests.get(
-                    f"{AWARE_FILTER_BASE_URL}/data",
-                    params=query_params,
-                    headers=headers,
-                    verify=False
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    records = data.get('data', [])
-                    if records and table_name not in tables_with_data:
+                result = response.json()
+                for table_info in result.get('tables_with_data', []):
+                    table_name = table_info['table']
+                    if table_name not in tables_with_data:
                         tables_with_data.append(table_name)
-                        break  # Found data for this table, no need to check other devices
-            
-            # Also check the transformed version of the table
-            transformed_table = f"{table_name}_transformed"
-            for device_id in device_ids:
-                if device_id in device_id_to_uid:
-                    device_uid = device_id_to_uid[device_id]
-                    query_params = {
-                        'table': transformed_table,
-                        'device_uid': device_uid,
-                        'limit': 1
-                    }
-                    
-                    response = requests.get(
-                        f"{AWARE_FILTER_BASE_URL}/data",
-                        params=query_params,
-                        headers=headers,
-                        verify=False
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        records = data.get('data', [])
-                        if records and table_name not in tables_with_data:
-                            tables_with_data.append(table_name)
-                            break
 
         logger.info(f"Retrieved {len(tables_with_data)} tables for label: {device_label}")
         return tables_with_data
         
-    except requests.RequestException as e:
+    except Exception as e:
         logger.error(f"Error retrieving tables for label {device_label}: {e}")
         return []
 
 
-def get_aware_data(device_label, table_name='battery', limit=1000, start_date=None, end_date=None):
+def get_aware_data(device_label, table_name='battery', limit=1000, start_date=None, end_date=None, offset=0):
     """
     Retrieves records from the AWARE Filter API for a specific device label and table.
     Returns a list of dictionaries.
+    
+    Args:
+        device_label (str): Device label to query
+        table_name (str): Table name to query (default: 'battery')
+        limit (int): Maximum records to return (default: 1000)
+        start_date (datetime): Filter records with timestamp >= start_date
+        end_date (datetime): Filter records with timestamp <= end_date
+        offset (int): Skip this many records before returning results (default: 0)
+    
+    Returns:
+        list: Records matching the query
     """
     if not device_label:
         logger.warning("Invalid AWARE device label provided.")
@@ -249,11 +197,13 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
                     device_id_to_uid[device_id] = lookup_records[0]['id']
         
         # Query the data for each device ID
+        # Fetch a larger batch to account for pagination across devices
+        batch_size = limit + offset
         for device_id in device_ids:
             query_params = {
                 'table': table_name,
                 'device_id': device_id,
-                'limit': limit
+                'limit': batch_size
             }
 
             # Add time filters if provided
@@ -286,7 +236,7 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
                 transformed_params = {
                     'table': transformed_table_name,
                     'device_uid': device_uid,
-                    'limit': limit
+                    'limit': batch_size
                 }
                 
                 if start_date:
@@ -311,14 +261,19 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
                     results.extend(transformed_records)
                     logger.info(f"Retrieved {len(transformed_records)} records from table {transformed_table_name} for device {device_id}")
 
-
-        # Apply limit if needed (API may not support it, so apply client-side)
-        if limit:
-            results = results[:limit]
+        # Sort results by timestamp to ensure consistent pagination
+        if results and 'timestamp' in results[0]:
+            results.sort(key=lambda x: x.get('timestamp', 0))
         
-        logger.info(f"Total: retrieved {len(results)} records from table {table_name} for device label {device_label}")
-        return results
+        # Apply offset and limit to the aggregated results
+        start_idx = offset
+        end_idx = offset + limit
+        paginated_results = results[start_idx:end_idx]
+        
+        logger.info(f"Total: retrieved {len(paginated_results)} records from table {table_name} for device label {device_label} (offset={offset}, limit={limit}, total_available={len(results)})")
+        return paginated_results
 
     except requests.RequestException as e:
         logger.error(f"Error retrieving data from AWARE Filter API for table {table_name}: {e}")
         return results
+
