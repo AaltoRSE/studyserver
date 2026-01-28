@@ -176,7 +176,7 @@ class AwareDataSource(DataSource):
         return []
 
     
-    def fetch_data(self, data_type='battery', limit=10000, start_date=None, end_date=None, offset=0):
+    def fetch_data(self, data_type='battery', limit=None, start_date=None, end_date=None, offset=0):
         """Get's the users data from the AWARE server"""
         print("Getting AWARE data...", self.device_label)
         if self.status == 'active' and self.device_id:

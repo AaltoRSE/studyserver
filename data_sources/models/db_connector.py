@@ -140,21 +140,21 @@ def get_aware_tables(device_label):
         return []
 
 
-def get_aware_data(device_label, table_name='battery', limit=1000, start_date=None, end_date=None, offset=0):
+def get_aware_data(device_label, table_name='battery', limit=None, start_date=None, end_date=None, offset=0):
     """
-    Retrieves records from the AWARE Filter API for a specific device label and table.
-    Returns a list of dictionaries.
+    Retrieves all records from the AWARE Filter API for a specific device label and table.
+    Handles pagination by making multiple requests until all data is fetched or limit is reached.
     
     Args:
         device_label (str): Device label to query
         table_name (str): Table name to query (default: 'battery')
-        limit (int): Maximum records to return (default: 1000)
+        limit (int, optional): Maximum records to return. If None, fetches all available data (default: None)
         start_date (datetime): Filter records with timestamp >= start_date
         end_date (datetime): Filter records with timestamp <= end_date
         offset (int): Skip this many records before returning results (default: 0)
     
     Returns:
-        list: Records matching the query
+        list: Records matching the query, up to limit
     """
     if not device_label:
         logger.warning("Invalid AWARE device label provided.")
@@ -171,6 +171,7 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         return []
 
     results = []
+    API_PAGE_SIZE = 10000  # Request this many records per API call
 
     try:
         # Build mapping of device_id to device_uid from device_lookup table
@@ -196,70 +197,93 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
                     # Map device_uuid to id (device_uid)
                     device_id_to_uid[device_id] = lookup_records[0]['id']
         
-        # Query the data for each device ID
-        # Fetch a larger batch to account for pagination across devices
-        batch_size = limit + offset
+        # Query the data for each device ID, fetching all pages until limit reached
         for device_id in device_ids:
-            query_params = {
-                'table': table_name,
-                'device_id': device_id,
-                'limit': batch_size
-            }
+            api_offset = 0
+            
+            while limit is None or len(results) < limit:
+                query_params = {
+                    'table': table_name,
+                    'device_id': device_id,
+                    'limit': API_PAGE_SIZE,
+                    'offset': api_offset
+                }
 
-            # Add time filters if provided
-            if start_date:
-                query_params['start_time'] = int(start_date.timestamp() * 1000)
-            if end_date:
-                query_params['end_time'] = int(end_date.timestamp() * 1000)
+                # Add time filters if provided
+                if start_date:
+                    query_params['start_time'] = int(start_date.timestamp() * 1000)
+                if end_date:
+                    query_params['end_time'] = int(end_date.timestamp() * 1000)
 
-            # Query the data from the API using the correct endpoint
-            response = requests.get(
-                f"{AWARE_FILTER_BASE_URL}/data",
-                params=query_params,
-                headers=headers,
-                verify=False
-            )
+                # Query the data from the API using the correct endpoint
+                response = requests.get(
+                    f"{AWARE_FILTER_BASE_URL}/data",
+                    params=query_params,
+                    headers=headers,
+                    verify=False
+                )
 
-            if response.status_code == 200:
-                data = response.json()
-                records = data.get('data', [])
-                results.extend(records)
-                logger.info(f"Retrieved {len(records)} records from table {table_name} for device {device_id}")
-            else:
-                logger.error(f"Failed to retrieve data from {table_name} for device {device_id}: {response.status_code} - {response.text}")
+                if response.status_code == 200:
+                    data = response.json()
+                    records = data.get('data', [])
+                    results.extend(records)
+                    logger.info(f"Retrieved {len(records)} records from table {table_name} for device {device_id} at offset {api_offset}")
+                    
+                    # Check if there are more records
+                    has_more = data.get('has_more', False)
+                    if not has_more or len(records) == 0:
+                        break
+                    
+                    api_offset += API_PAGE_SIZE
+                else:
+                    logger.error(f"Failed to retrieve data from {table_name} for device {device_id}: {response.status_code} - {response.text}")
+                    break
 
             # Query the transformed table if device_uid mapping exists
             if device_id in device_id_to_uid:
                 device_uid = device_id_to_uid[device_id]
                 transformed_table_name = f"{table_name}_transformed"
+                api_offset = 0
                 
-                transformed_params = {
-                    'table': transformed_table_name,
-                    'device_uid': device_uid,
-                    'limit': batch_size
-                }
-                
-                if start_date:
-                    transformed_params['start_time'] = int(start_date.timestamp() * 1000)
-                if end_date:
-                    transformed_params['end_time'] = int(end_date.timestamp() * 1000)
-                
-                response = requests.get(
-                    f"{AWARE_FILTER_BASE_URL}/data",
-                    params=transformed_params,
-                    headers=headers,
-                    verify=False
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    transformed_records = data.get('data', [])
-                    # Map device_uid back to device_id for consistency
-                    for record in transformed_records:
-                        record['device_id'] = device_id
-                        record.pop('device_uid', None)
-                    results.extend(transformed_records)
-                    logger.info(f"Retrieved {len(transformed_records)} records from table {transformed_table_name} for device {device_id}")
+                while limit is None or len(results) < limit:
+                    transformed_params = {
+                        'table': transformed_table_name,
+                        'device_uid': device_uid,
+                        'limit': API_PAGE_SIZE,
+                        'offset': api_offset
+                    }
+                    
+                    if start_date:
+                        transformed_params['start_time'] = int(start_date.timestamp() * 1000)
+                    if end_date:
+                        transformed_params['end_time'] = int(end_date.timestamp() * 1000)
+                    
+                    response = requests.get(
+                        f"{AWARE_FILTER_BASE_URL}/data",
+                        params=transformed_params,
+                        headers=headers,
+                        verify=False
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        transformed_records = data.get('data', [])
+                        # Map device_uid back to device_id for consistency
+                        for record in transformed_records:
+                            record['device_id'] = device_id
+                            record.pop('device_uid', None)
+                        results.extend(transformed_records)
+                        logger.info(f"Retrieved {len(transformed_records)} records from table {transformed_table_name} for device {device_id} at offset {api_offset}")
+                        
+                        # Check if there are more records
+                        has_more = data.get('has_more', False)
+                        if not has_more or len(transformed_records) == 0:
+                            break
+                        
+                        api_offset += API_PAGE_SIZE
+                    else:
+                        logger.error(f"Failed to retrieve data from {transformed_table_name} for device {device_id}: {response.status_code}")
+                        break
 
         # Sort results by timestamp to ensure consistent pagination
         if results and 'timestamp' in results[0]:
@@ -267,7 +291,7 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         
         # Apply offset and limit to the aggregated results
         start_idx = offset
-        end_idx = offset + limit
+        end_idx = offset + limit if limit is not None else None
         paginated_results = results[start_idx:end_idx]
         
         logger.info(f"Total: retrieved {len(paginated_results)} records from table {table_name} for device label {device_label} (offset={offset}, limit={limit}, total_available={len(results)})")

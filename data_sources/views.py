@@ -181,7 +181,6 @@ def view_data_source(request, source_id):
             end_datetime = datetime.combine(end_date, time.max) if end_date else None
             all_data = real_instance.fetch_data(
                 data_type=selected_type, 
-                limit=10000,
                 start_date=start_datetime,
                 end_date=end_datetime
             )
