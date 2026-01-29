@@ -104,6 +104,9 @@ class AwareDataSource(DataSource):
             )
         
         elif view_type == "config":
+            if request.method == 'POST':
+                # for now just print what was posted
+                print("Received AWARE config POST:", request.POST)
             active_consents = Consent.objects.filter(
                 participant=self.profile,
                 data_source_id=self.id,
@@ -120,17 +123,17 @@ class AwareDataSource(DataSource):
                     "researcher_last": "Rantaharju",
                     "researcher_contact": "<jarno.rantaharju@aalto.fi>"
                 },
-                #"database": {
-                #    "rootPassword": "-",
-                #    "rootUsername": "-",
-                #    "database_host": settings.AWARE_DB_HOST,
-                #    "database_port": settings.AWARE_DB_PORT,
-                #    "database_name": settings.AWARE_DB_NAME,
-                #    "database_password": settings.AWARE_DB_INSERT_PASSWORD,
-                #    "database_username": settings.AWARE_DB_INSERT_USER,
-                #    "require_ssl": True,
-                #    "config_without_password": False
-                #},
+                "database": {
+                    "rootPassword": "-",
+                    "rootUsername": "-",
+                    "database_host": settings.AWARE_DB_HOST,
+                    "database_port": settings.AWARE_DB_PORT,
+                    "database_name": settings.AWARE_DB_NAME,
+                    "database_password": settings.AWARE_DB_INSERT_PASSWORD,
+                    "database_username": settings.AWARE_DB_INSERT_USER,
+                    "require_ssl": True,
+                    "config_without_password": False
+                },
                 "createdAt": "",
                 "updatedAt": "2025-09-25T12:30:13.411Z",
                 "questions": [],
@@ -161,6 +164,32 @@ class AwareDataSource(DataSource):
                 except requests.exceptions.RequestException:
                     continue
             return JsonResponse(config_json)
+        
+        elif view_type == "join":
+            return render(
+                request,
+                'data_sources/aware/join_study.html'
+            )
+        
+        elif view_type == "client_get_study_info":
+            consent = Consent.objects.filter(
+                participant=self.profile,
+                data_source_id=self.id,
+                is_complete=True,
+                revocation_date__isnull=True
+            ).first()
+            if not consent:
+                return JsonResponse({"error": "No active consent found."}, status=404)
+                
+            study_info = {
+                    "study_title": "Polalpha",
+                    "study_description": "Alpha study for POLWELL and POLEMIC",
+                    "researcher_first": "Jarno",
+                    "researcher_last": "Rantaharju",
+                    "researcher_contact": "<jarno.rantaharju@aalto.fi>"
+                }
+            return JsonResponse(study_info)
+            
 
     
     def get_data_types(self):
