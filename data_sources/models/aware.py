@@ -165,12 +165,6 @@ class AwareDataSource(DataSource):
                     continue
             return JsonResponse(config_json)
         
-        elif view_type == "join":
-            return render(
-                request,
-                'data_sources/aware/join_study.html'
-            )
-        
         elif view_type == "client_get_study_info":
             consent = Consent.objects.filter(
                 participant=self.profile,
@@ -189,6 +183,9 @@ class AwareDataSource(DataSource):
                     "researcher_contact": "<jarno.rantaharju@aalto.fi>"
                 }
             return JsonResponse(study_info)
+        
+        else:
+            return (False, "Invalid view type specified.")
             
 
     
