@@ -183,9 +183,6 @@ class AwareDataSource(DataSource):
                     "researcher_contact": "<jarno.rantaharju@aalto.fi>"
                 }
             return JsonResponse(study_info)
-        
-        else:
-            return (False, "Invalid view type specified.")
             
 
     
