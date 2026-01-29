@@ -120,13 +120,6 @@ class AwareDataSource(DataSource):
                     "researcher_last": "Rantaharju",
                     "researcher_contact": "<jarno.rantaharju@aalto.fi>"
                 },
-                "webservice": {
-                  "webservice_server": f"aware.cs.aalto.fi/webservice/{settings.AWARE_DB_INSERT_PASSWORD}",
-                  "webservice_wifi_only": False,
-                  "webservice_charging": False,
-                  "frequency_webservice": 60,
-                  "webservice_silent": False
-                },
                 #"database": {
                 #    "rootPassword": "-",
                 #    "rootUsername": "-",
@@ -143,9 +136,12 @@ class AwareDataSource(DataSource):
                 "questions": [],
                 "schedules": [],
                 "sensors": [
-                    {
-                        "setting": "device_label", "value": self.device_label
-                    }
+                    {"setting": "device_label", "value": self.device_label},
+                    {"setting": "status_webservice", "value": "true"},
+                    {"setting": "webservice_server", "value": f"https://aware.cs.aalto.fi:3446/index.php/webservice/index/Polalpha/{settings.STUDY_PASSWORD}"},
+                    {"setting": "frequency_webservice", "value": "60"},
+                    {"setting": "status_battery", "value": "true"},
+                    {"setting": "status_accelerometer", "value": "true"}
                 ]
             }
             for study in studies:
