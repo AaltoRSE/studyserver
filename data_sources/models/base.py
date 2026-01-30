@@ -92,8 +92,22 @@ class DataSource(PolymorphicModel):
         """Returns a list of available data type names for this source."""
         raise NotImplementedError("Subclasses must implement this method.")
     
-    def fetch_data(self):
-        """Fetches and returns data from the source. """
+    def fetch_data(self, data_type='battery', limit=None, start_date=None, end_date=None, offset=0):
+        """Fetches and returns data from the source.
+
+        Parameters:
+        - data_type: name of the data table/type to fetch
+        - limit: maximum number of rows to return (None means no limit)
+        - start_date, end_date: optional datetime filters
+        - offset: pagination offset (use with limit)
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+    def count_rows(self, data_type='battery', start_date=None, end_date=None):
+        """Return the number of rows available for the given data_type and filters.
+
+        Subclasses should override to provide an efficient count operation.
+        """
         raise NotImplementedError("Subclasses must implement this method.")
 
     def __str__(self):

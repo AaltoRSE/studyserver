@@ -14,7 +14,7 @@ class JsonUrlDataSource(DataSource):
     def get_data_types(self):
         return ["raw_json"]
 
-    def fetch_data(self, data_type, limit=10000, start_date=None, end_date=None):
+    def fetch_data(self, data_type, limit=10000, start_date=None, end_date=None, offset=0):
         """Fetches and returns the JSON data from the source URL.
         
         No formatting or processing, just returns the string."""
@@ -38,7 +38,25 @@ class JsonUrlDataSource(DataSource):
                 row['device_id'] = str(self.device_id)
                 enriched_data.append(row)
 
-            return enriched_data
+            # Apply offset and limit slicing
+            start = int(offset) if offset else 0
+            end = start + int(limit) if limit is not None else None
+            return enriched_data[start:end]
         except requests.exceptions.RequestException as e:
             return {"error": f"Could not fetch data from URL: {e}"}
+
+    def count_rows(self, data_type, start_date=None, end_date=None):
+        """Return number of rows for the given data_type. This will fetch the JSON and count entries."""
+        if data_type != 'raw_json':
+            return 0
+
+        try:
+            response = requests.get(self.url, timeout=10)
+            response.raise_for_status()
+            result = response.json()
+            if not isinstance(result, list):
+                result = [result]
+            return len(result)
+        except requests.exceptions.RequestException:
+            return 0
         

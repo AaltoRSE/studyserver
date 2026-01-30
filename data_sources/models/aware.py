@@ -200,6 +200,12 @@ class AwareDataSource(DataSource):
         print("Getting AWARE data...", self.device_label)
         if self.status == 'active' and self.device_id:
             return db_connector.get_aware_data(
-                self.device_label, data_type, limit, start_date, end_date
+                self.device_label, data_type, limit, start_date, end_date, offset
             )
         return []
+
+    def count_rows(self, data_type='battery', start_date=None, end_date=None):
+        """Return the number of rows available for the given AWARE data_type."""
+        if self.status == 'active' and self.device_id:
+            return db_connector.get_aware_count(self.device_label, data_type, start_date, end_date)
+        return 0

@@ -1,5 +1,9 @@
 import mysql.connector
 from django.conf import settings
+import time
+
+# Simple in-memory cache for get_aware_tables: { device_label: (timestamp, tables_list) }
+_aware_tables_cache = {}
 
 
 def get_device_ids_for_label(device_label):
@@ -38,10 +42,16 @@ def get_aware_tables(device_label):
     if not device_label:
         print("Invalid AWARE device label provided.", device_label)
         return []
-
     device_ids = get_device_ids_for_label(device_label)
     if not device_ids:
         return []
+
+    # Return cached result when available and fresh (60s)
+    cached = _aware_tables_cache.get(device_label)
+    if cached:
+        ts, tables = cached
+        if time.time() - ts < 60:
+            return tables
 
     tables_with_data = []
     try:
@@ -65,10 +75,7 @@ def get_aware_tables(device_label):
                     table_name_without_suffix = table_name.replace("_transformed", "")
                     device_id_format = ",".join(["%s"] * len(device_ids))
                     query_string = f"SELECT id FROM device_lookup WHERE device_uuid IN ({device_id_format})"
-                    cursor.execute(
-                        query_string,
-                        tuple(device_ids)
-                    )
+                    cursor.execute(query_string, tuple(device_ids))
 
                     rows = cursor.fetchall()
                     device_uids = [row[0] for row in rows if isinstance(row, tuple) and len(row) > 0]
@@ -76,7 +83,7 @@ def get_aware_tables(device_label):
                         continue
 
                     device_uid_format = ",".join(["%s"] * len(device_uids))
-                    query = f"SELECT 1 FROM `{table_name}` WHERE {column_to_check} IN ({device_uid_format}) LIMIT 1"
+                    query = f"SELECT 1 FROM `{table_name}` WHERE {column_to_check} IN ({device_uid_format}) LIMIT 1"                    
                     cursor.execute(query, tuple(device_uids))
 
                     if cursor.fetchone():
@@ -98,6 +105,11 @@ def get_aware_tables(device_label):
 
         cursor.close()
         database.close()
+        # Cache the result for a short period to avoid repeated introspection
+        try:
+            _aware_tables_cache[device_label] = (time.time(), tables_with_data)
+        except Exception:
+            pass
         return tables_with_data
 
     except mysql.connector.Error as e:
@@ -105,16 +117,62 @@ def get_aware_tables(device_label):
         return []
 
 
-def get_aware_data(device_label, table_name='battery', limit=1000, start_date=None, end_date=None):
+def _run_aware_table_query(cursor, base_select, table_name, id_column, id_values, start_date=None, end_date=None, limit=None, offset=0):
+    """Build and run a parametrized query against an AWARE table.
+
+    - `base_select` should be the SELECT prefix (e.g. "SELECT *" or "SELECT COUNT(*) as row_count").
+    - `id_column` is the column to filter on (device_id or device_uid).
+    - `id_values` is a non-empty list of parameter values to use in the IN(...) clause.
+    Returns the fetched rows (list).
     """
-    Connects to the AWARE DB and fetches the latest records for a specific
-    AWARE device ID. Returns a list of dictionaries.
+    if not id_values:
+        return []
+
+    is_count = str(base_select).strip().upper().startswith("SELECT COUNT")
+    id_placeholders = ",".join(["%s"] * len(id_values))
+    query_str = (
+        f"{base_select} FROM `{table_name}` "
+        f"WHERE {id_column} IN ({id_placeholders})"
+    )
+    params = list(id_values)
+
+    if start_date:
+        query_str += " AND timestamp >= %s"
+        params.append(int(start_date.timestamp() * 1000))
+    if end_date:
+        query_str += " AND timestamp <= %s"
+        params.append(int(end_date.timestamp() * 1000))
+
+    if not is_count:
+        query_str += " ORDER BY timestamp DESC"
+        if limit is not None:
+            try:
+                limit_val = int(limit)
+            except (TypeError, ValueError):
+                limit_val = None
+            if limit_val and limit_val > 0:
+                if offset and int(offset) > 0:
+                    query_str += " LIMIT %s OFFSET %s"
+                    params.extend([limit_val, int(offset)])
+                else:
+                    query_str += " LIMIT %s"
+                    params.append(limit_val)
+
+    cursor.execute(query_str, tuple(params))
+    return cursor.fetchall()
+
+
+def query_aware_data(base_query, device_label, table_name, limit=None, start_date=None, end_date=None, offset=0):
+    """
+    Runs a data query against the AWARE database. The query parameter should be either "SELECT COUNT(*)" or "SELECT *".
     """
     if not device_label:
         print("Invalid AWARE device label provided.", device_label)
         return []
 
     device_ids = get_device_ids_for_label(device_label)
+    if not device_ids:
+        return []
     results = []
 
     try:
@@ -136,57 +194,21 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         cursor.close()
 
         cursor = database.cursor(dictionary=True)
-        # Query the original table
-        query = (
-            f"SELECT * FROM {table_name} "
-            f"WHERE device_id IN ({','.join(['%s'] * len(device_ids))}) "
-        )
-        params = list(device_ids)
-
-        if start_date:
-            query += " AND timestamp >= %s"
-            params.append(start_date.timestamp() * 1000) 
-        if end_date:
-            query += " AND timestamp <= %s"
-            params.append(end_date.timestamp() * 1000)
-
-        query += " ORDER BY timestamp DESC LIMIT %s"
-        params.append(limit)
-
-        cursor.execute(query, tuple(params))
-        results.extend(cursor.fetchall())
+        # Query the original table using shared helper
+        results.extend(_run_aware_table_query(cursor, base_query, table_name, 'device_id', device_ids, start_date, end_date, limit, offset))
 
         # Query the transformed table
         transformed_table_name = f"{table_name}_transformed"
         device_id_format = ",".join(["%s"] * len(device_ids))
         query_string = f"SELECT id FROM device_lookup WHERE device_uuid IN ({device_id_format})"
-        cursor.execute(
-            query_string,
-            tuple(device_ids)
-        )
+        cursor.execute(query_string, tuple(device_ids))
         rows = cursor.fetchall()
         device_uids = [row['id'] for row in rows if isinstance(row, dict) and len(row) > 0]
         device_uid_to_id = {duid: did for did, duid in zip(device_ids, device_uids)}
 
         if device_uids:
-            query = (
-                f"SELECT * FROM {transformed_table_name} "
-                f"WHERE device_uid IN ({','.join(['%s'] * len(device_uids))}) "
-            )
-            params = list(device_uids)
-
-            if start_date:
-                query += " AND timestamp >= %s"
-                params.append(start_date.timestamp() * 1000) 
-            if end_date:
-                query += " AND timestamp <= %s"
-                params.append(end_date.timestamp() * 1000)
-
-            query += " ORDER BY timestamp DESC LIMIT %s"
-            params.append(limit)
-
-            cursor.execute(query, tuple(params))
-            results_transformed = cursor.fetchall()
+            # Query the transformed table using the same helper
+            results_transformed = _run_aware_table_query(cursor, base_query, transformed_table_name, 'device_uid', device_uids, start_date, end_date, limit, offset)
             for row in results_transformed:
                 row['device_id'] = device_uid_to_id.get(row['device_uid'], None)
                 row.pop('device_uid', None)
@@ -196,7 +218,30 @@ def get_aware_data(device_label, table_name='battery', limit=1000, start_date=No
         database.close()
 
         return results
-
+    
     except mysql.connector.Error as e:
-        print(f"Error connecting to Aware database: {e}")
+        print(f"Error querying Aware data: {e}")
         return results
+
+
+
+def get_aware_data(device_label, table_name='battery', limit=1000, start_date=None, end_date=None, offset=0):
+    """
+    Connects to the AWARE DB and fetches the latest records for a specific
+    AWARE device ID. Returns a list of dictionaries.
+    """
+    return query_aware_data(
+        "SELECT *", device_label, table_name, limit, start_date, end_date, offset
+    )
+
+
+def get_aware_count(device_label, table_name='battery', start_date=None, end_date=None):
+    """Return the number of rows available for the given AWARE data_type.
+
+    Counts rows in the original and transformed tables (if present) for the
+    provided device_label and optional time range.
+    """
+    return query_aware_data(
+        "SELECT COUNT(*) as row_count", device_label, table_name, None, start_date, end_date, 0
+    )[0]['row_count']
+

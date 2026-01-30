@@ -50,7 +50,7 @@ class TikTokPortabilityDataSource(DataSource):
     def get_data_types(self):
         return ['tiktok_portability']
 
-    def fetch_data(self, data_type, limit=1000, start_date=None, end_date=None):
+    def fetch_data(self, data_type, limit=1000, start_date=None, end_date=None, offset=0):
         if data_type != 'tiktok_portability':
             return []
 
@@ -62,6 +62,14 @@ class TikTokPortabilityDataSource(DataSource):
             'data': {'message': 'TikTok portability data fetched successfully.'},
             'fetched_at': timezone.now(),
         }]
+
+    def count_rows(self, data_type, start_date=None, end_date=None):
+        if data_type != 'tiktok_portability':
+            return 0
+        if self.processing_status != 'processed':
+            return 0
+        # This source returns a single aggregated object when processed
+        return 1
     
 
     @staticmethod
