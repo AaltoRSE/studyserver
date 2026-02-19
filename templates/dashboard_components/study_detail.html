@@ -48,6 +48,11 @@ You have enrolled in {{ study.title }}.
                         <a href="{{ consent.source.get_setup_url }}?consent_id={{ consent.consent.id }}" style="color: blue; text-decoration: underline; margin-left: 10px;">
                             Go to Setup/OAuth
                         </a>
+                        {% if consent.source.display_type == "Google Portability Data" %}
+                            <div style="font-size:90%; margin-top:6px; color:#333; max-width:40rem;">
+                                The use of information received from the Data Portability API adheres to the Data Portability API user data and developer policy, including the Limited Use Requirements.
+                            </div>
+                        {% endif %}
                     {% endif %}
                 {% elif consent.source.status == 'processing' %}
                     <span style="color: blue;">Processing.</span>

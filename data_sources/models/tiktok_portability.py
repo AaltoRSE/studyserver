@@ -9,6 +9,7 @@ import base64
 import requests
 import secrets
 from urllib.parse import urlencode
+from data_sources.utils import crypto
 from .base import DataSource
 
 
@@ -132,8 +133,19 @@ class TikTokPortabilityDataSource(DataSource):
             response.raise_for_status()
             token_info = response.json()
 
-            self.access_token = token_info['data']['access_token']
-            self.refresh_token = token_info['data']['refresh_token']
+            try:
+                self.access_token = crypto.encrypt_text(token_info['data']['access_token'])
+            except Exception as e:
+                self.access_token = None
+                self.processing_log = (self.processing_log or '') + f"Failed to encrypt access_token: {e}\n"
+            try:
+                if token_info['data'].get('refresh_token'):
+                    self.refresh_token = crypto.encrypt_text(token_info['data']['refresh_token'])
+                else:
+                    self.refresh_token = ''
+            except Exception as e:
+                self.refresh_token = None
+                self.processing_log = (self.processing_log or '') + f"Failed to encrypt refresh_token: {e}\n"
             expires_in = token_info['data']['expires_in']
             self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
             self.tiktok_user_id = token_info['data']['open_id']
@@ -152,11 +164,16 @@ class TikTokPortabilityDataSource(DataSource):
             return False, "No refresh token available."
 
         token_url = 'https://sandbox.tiktok.com/auth/token/'
+        # decrypt refresh token for request
+        try:
+            refresh_token_plain = crypto.decrypt_text(self.refresh_token)
+        except Exception:
+            refresh_token_plain = self.refresh_token
         token_data = {
             'client_key': settings.TIKTOK_CLIENT_KEY,
             'client_secret': settings.TIKTOK_CLIENT_SECRET,
             'grant_type': 'refresh_token',
-            'refresh_token': self.refresh_token,
+            'refresh_token': refresh_token_plain,
         }
 
         try:
@@ -164,7 +181,11 @@ class TikTokPortabilityDataSource(DataSource):
             response.raise_for_status()
             token_info = response.json()
 
-            self.access_token = token_info['data']['access_token']
+            try:
+                self.access_token = crypto.encrypt_text(token_info['data']['access_token'])
+            except Exception as e:
+                self.access_token = None
+                self.processing_log = (self.processing_log or '') + f"Failed to encrypt refreshed access_token: {e}\n"
             expires_in = token_info['data']['expires_in']
             self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
             self.save()

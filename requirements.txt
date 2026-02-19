@@ -9,3 +9,4 @@ djangorestframework
 niimpy
 celery
 redis
+cryptography

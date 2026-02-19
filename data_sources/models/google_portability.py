@@ -10,6 +10,7 @@ import requests
 import secrets
 import pandas as pd
 from niimpy.reading.google_portability import youtube_history as np_youtube_history
+import data_sources.utils.crypto as crypto
 
 from urllib.parse import urlencode
 from .base import DataSource
@@ -75,7 +76,18 @@ class GooglePortabilityDataSource(DataSource):
             return []
         
         try:
-            df = pd.read_csv(self.CSV_OUTPUT_PATH)
+            # CSV is stored encrypted; decrypt to temp before reading
+            if os.path.exists(self.CSV_OUTPUT_PATH):
+                tmp = crypto.decrypt_file_to_temp(self.CSV_OUTPUT_PATH)
+                try:
+                    df = pd.read_csv(tmp)
+                finally:
+                    try:
+                        os.remove(tmp)
+                    except Exception:
+                        pass
+            else:
+                raise FileNotFoundError
             df = df[df['device_id'] == str(self.device_id)]
 
             if start_date:
@@ -99,7 +111,17 @@ class GooglePortabilityDataSource(DataSource):
             return 0
 
         try:
-            df = pd.read_csv(self.CSV_OUTPUT_PATH)
+            if os.path.exists(self.CSV_OUTPUT_PATH):
+                tmp = crypto.decrypt_file_to_temp(self.CSV_OUTPUT_PATH)
+                try:
+                    df = pd.read_csv(tmp)
+                finally:
+                    try:
+                        os.remove(tmp)
+                    except Exception:
+                        pass
+            else:
+                raise FileNotFoundError
             df = df[df['device_id'] == str(self.device_id)]
 
             if start_date:
@@ -139,7 +161,14 @@ class GooglePortabilityDataSource(DataSource):
     def create_archive_job(self):
         """Initiate a data export job and store the job ID."""
         api_url = 'https://dataportability.googleapis.com/v1/portabilityArchive:initiate'
-        headers = {'Authorization': f"Bearer {self.access_token}"}
+        # access_token stored encrypted in DB; decrypt for use
+        access_token = None
+        if self.access_token:
+            try:
+                access_token = crypto.decrypt_text(self.access_token)
+            except Exception:
+                access_token = self.access_token
+        headers = {'Authorization': f"Bearer {access_token}"}
         body = {
             'resources': [
                 'discover.likes',
@@ -195,8 +224,20 @@ class GooglePortabilityDataSource(DataSource):
             response.raise_for_status()
             tokens = response.json()
 
-            self.access_token = tokens['access_token']
-            self.refresh_token = tokens.get('refresh_token', '')
+            # store tokens encrypted
+            try:
+                self.access_token = crypto.encrypt_text(tokens['access_token'])
+            except Exception as e:
+                self.access_token = None
+                self.processing_log += f"Failed to encrypt access_token: {e}\n"
+            try:
+                if tokens.get('refresh_token'):
+                    self.refresh_token = crypto.encrypt_text(tokens.get('refresh_token', ''))
+                else:
+                    self.refresh_token = ''
+            except Exception as e:
+                self.refresh_token = None
+                self.processing_log += f"Failed to encrypt refresh_token: {e}\n"
             expires_in = tokens.get('expires_in')
             self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
             self.processing_status = 'authorized'
@@ -224,8 +265,13 @@ class GooglePortabilityDataSource(DataSource):
             return False, "No refresh token available."
 
         token_url = 'https://oauth2.googleapis.com/token'
+        # decrypt refresh token if stored encrypted
+        try:
+            refresh_token_plain = crypto.decrypt_text(self.refresh_token)
+        except Exception:
+            refresh_token_plain = self.refresh_token
         token_data = {
-            'refresh_token': self.refresh_token,
+            'refresh_token': refresh_token_plain,
             'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
             'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
             'grant_type': 'refresh_token',
@@ -236,7 +282,11 @@ class GooglePortabilityDataSource(DataSource):
             response.raise_for_status()
             tokens = response.json()
 
-            self.access_token = tokens['access_token']
+            try:
+                self.access_token = crypto.encrypt_text(tokens['access_token'])
+            except Exception as e:
+                self.access_token = None
+                self.processing_log += f"Failed to encrypt refreshed access_token: {e}\n"
             expires_in = tokens.get('expires_in')
             self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
             self.save()
@@ -251,9 +301,13 @@ class GooglePortabilityDataSource(DataSource):
         # Revoke Google OAuth token
         self.refresh_access_token()
         if self.access_token:
+            try:
+                token = crypto.decrypt_text(self.access_token)
+            except Exception:
+                token = self.access_token
             revoke_url = 'https://dataportability.googleapis.com/v1/authorization:reset'
             headers = {
-                'Authorization': f"Bearer {self.access_token}",
+                'Authorization': f"Bearer {token}",
                 'Content-Type': 'application/json'
             }
 
@@ -273,8 +327,13 @@ class GooglePortabilityDataSource(DataSource):
             return False, "Cannot download data: No valid access token."
         
         token_url = 'https://oauth2.googleapis.com/token'
+        # decrypt refresh token if stored encrypted
+        try:
+            refresh_token_plain = crypto.decrypt_text(self.refresh_token)
+        except Exception:
+            refresh_token_plain = self.refresh_token
         token_data = {
-            'refresh_token': self.refresh_token,
+            'refresh_token': refresh_token_plain,
             'client_id': settings.GOOGLE_OAUTH_CLIENT_ID,
             'client_secret': settings.GOOGLE_OAUTH_CLIENT_SECRET,
             'grant_type': 'refresh_token',
@@ -305,10 +364,13 @@ class GooglePortabilityDataSource(DataSource):
                 download_urls = status_data.get('urls', [])
                 for i, url in enumerate(download_urls):
                     file_response = requests.get(url)
-
-                    with open(f'data/google_data_{job_id}_{i}.zip', 'wb') as f:
-                        f.write(file_response.content)
-                    self.downloaded_files.append(f'data/google_data_{job_id}_{i}.zip')
+                    # ensure data dir
+                    if not os.path.exists('data'):
+                        os.makedirs('data')
+                    path = f'data/google_data_{job_id}_{i}.zip'
+                    # write encrypted bytes
+                    crypto.write_encrypted_bytes(path, file_response.content)
+                    self.downloaded_files.append(path)
                 self.processing_status = 'processing'
 
                 job_status[job_id] = {'completed': True, 'downloaded_at': timezone.now().isoformat(), 'state': 'COMPLETED'}
@@ -338,7 +400,17 @@ class GooglePortabilityDataSource(DataSource):
         
         try:
             try:
-                df = pd.read_csv(self.CSV_OUTPUT_PATH)
+                if os.path.exists(self.CSV_OUTPUT_PATH):
+                    tmp = crypto.decrypt_file_to_temp(self.CSV_OUTPUT_PATH)
+                    try:
+                        df = pd.read_csv(tmp)
+                    finally:
+                        try:
+                            os.remove(tmp)
+                        except Exception:
+                            pass
+                else:
+                    raise FileNotFoundError
             except FileNotFoundError:
                 df = pd.DataFrame()
             
@@ -350,11 +422,26 @@ class GooglePortabilityDataSource(DataSource):
                     self.processing_log += f"File not found: {filepath}\n"
                     continue
 
-                read_df = np_youtube_history(filepath)
+                # downloaded files are stored encrypted; decrypt to temp before processing
+                try:
+                    tmp_fp = crypto.decrypt_file_to_temp(filepath)
+                except Exception as e:
+                    self.processing_log += f"Failed to decrypt {filepath}: {e}\n"
+                    continue
+
+                try:
+                    read_df = np_youtube_history(tmp_fp)
+                finally:
+                    try:
+                        os.remove(tmp_fp)
+                    except Exception:
+                        pass
                 read_df["device_id"] = str(self.device_id)
                 df = pd.concat([df, read_df], ignore_index=True)
 
-                df.to_csv(self.CSV_OUTPUT_PATH, index=False)
+                # write processed CSV encrypted
+                csv_bytes = df.to_csv(index=False).encode()
+                crypto.write_encrypted_bytes(self.CSV_OUTPUT_PATH, csv_bytes)
                 file_status[filepath] = {'processed': True, 'processed_at': timezone.now().isoformat()}
                 self.file_status = file_status
 
