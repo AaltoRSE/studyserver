@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.contrib import messages
+from django.utils import timezone
 from urllib.parse import urlencode
 from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
@@ -39,6 +40,7 @@ def link_consent_to_source(consent_id, data_source, profile):
     if consent:
         consent.data_source = data_source
         consent.is_complete = True
+        consent.consent_date = timezone.now()
         consent.save()
 
 

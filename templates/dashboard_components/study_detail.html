@@ -55,8 +55,13 @@ You have enrolled in {{ study.title }}.
                         {% endif %}
                     {% endif %}
                 {% elif consent.source.status == 'processing' %}
-                    <span style="color: blue;">Processing.</span>
-                    </br>Data source is being processed.
+                    <span style="color: orange;">Waiting for data.</span>
+                    </br>This data source is set up and awaiting data.
+                    {% if consent.source.get_confirm_url %}
+                        <a href="{{ consent.source.get_confirm_url }}?consent_id={{ consent.consent.id }}" style="color: blue; text-decoration: underline; margin-left: 10px;">
+                            Check for data
+                        </a>
+                    {% endif %}
                 {% else %}
                     <span style="color: red;">Inactive.</span>
                     </br>Data source is not yet active.
@@ -81,12 +86,17 @@ You have enrolled in {{ study.title }}.
                             (Revoke)
                         </a>
                         </br>This data source is set up and actively sending data.
-                    {% elif opt_item.source.status == 'pending' %}
-                        <span style="color: orange;">Pending Setup.</span>
-                        </br>Setup is required for this data source.
+                        {% elif opt_item.source.status == 'pending' %}
+                            <span style="color: orange;">Pending Setup.</span>
+                            </br>Setup is required for this data source.
                     {% elif opt_item.source.status == 'processing' %}
-                        <span style="color: blue;">Processing.</span>
-                        </br>Data source is being processed.
+                        <span style="color: orange;">Waiting for data.</span>
+                        </br>This data source is set up and awaiting data.
+                        {% if opt_item.source.get_confirm_url %}
+                            <a href="{{ opt_item.source.get_confirm_url }}?consent_id={{ opt_item.consent.id }}" style="color: blue; text-decoration: underline; margin-left: 10px;">
+                                Check for data
+                            </a>
+                        {% endif %}
                     {% else %}
                         <span style="color: red;">Inactive.</span>
                         </br>Data source is not yet active.

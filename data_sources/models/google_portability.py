@@ -255,6 +255,13 @@ class GooglePortabilityDataSource(DataSource):
             print(f"Error creating archive job: {e}")
             return False, f"Error creating archive job: {e}"
         if success:
+            # Authorization succeeded and an export job was created. Mark the
+            # data source as processing so the dashboard shows "waiting for data".
+            try:
+                self.status = 'processing'
+                self.save()
+            except Exception:
+                pass
             return True, "Authorization successful."
         else:
             print(f"Error creating archive job: {message}")
@@ -372,6 +379,12 @@ class GooglePortabilityDataSource(DataSource):
                     crypto.write_encrypted_bytes(path, file_response.content)
                     self.downloaded_files.append(path)
                 self.processing_status = 'processing'
+                # Ensure the generic data source status reflects that processing
+                # has started (so dashboard shows a "waiting for data" message).
+                try:
+                    self.status = 'processing'
+                except Exception:
+                    pass
 
                 job_status[job_id] = {'completed': True, 'downloaded_at': timezone.now().isoformat(), 'state': 'COMPLETED'}
                 self.job_status = job_status

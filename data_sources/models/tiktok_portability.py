@@ -151,6 +151,12 @@ class TikTokPortabilityDataSource(DataSource):
             self.tiktok_user_id = token_info['data']['open_id']
             self.processing_status = 'authorized'
             self.code_verifier = ''
+            try:
+                # Mark as processing so the dashboard shows that setup is complete
+                # and we're waiting for data to be prepared.
+                self.status = 'processing'
+            except Exception:
+                pass
             self.save()
             return True, "Authorization successful."
         

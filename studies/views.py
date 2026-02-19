@@ -157,7 +157,8 @@ def consent_checkbox_view(request, consent, study):
             consent.consent_text_accepted = True
             if consent.data_source:
                 consent.is_complete = True
-            consent.save()
+                consent.consent_date = timezone.now()
+                consent.save()
             return redirect(f"{reverse('consent_workflow', args=[study.id])}?consent_id={consent.id}")
     else:
         form = ConsentAcceptanceForm()
@@ -201,6 +202,7 @@ def select_data_source_view(request, consent, profile, study):
                 if source:
                     consent.data_source = source
                     consent.is_complete = True
+                    consent.consent_date = timezone.now()
                     consent.save()
                     return redirect('consent_workflow', study_id=study.id)
         elif action == 'create':
