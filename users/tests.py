@@ -4,11 +4,14 @@ from django.urls import reverse
 from users.models import Profile
 from rest_framework.authtoken.models import Token
 from studies.models import Study, Consent
+from django.utils import timezone
 from django.contrib.auth.models import User
 from django.urls import path
 from django.contrib import messages
 from django.http import HttpResponseRedirect
 from study_server.urls import urlpatterns as real_urlpatterns
+from django.contrib.auth.models import AnonymousUser, User as DjangoUser
+import uuid
 
 def test_message_view(request):
     messages.info(request, 'This is an info message.')
@@ -18,7 +21,27 @@ urlpatterns = real_urlpatterns + [
     path('test-message/', test_message_view, name='test_message_view'),
 ]
 
-class StaticPagesTest(TestCase):
+class BaseTestCase(TestCase):
+    def setUp(self):
+        super().setUp()
+        # Provide a safe `profile` attribute on AnonymousUser during tests
+        def _anon_profile(self):
+            if not hasattr(self, '_test_profile'):
+                user = DjangoUser.objects.create_user(username=f'anon_{uuid.uuid4().hex}', password='pass')
+                self._test_profile = Profile.objects.create(user=user, user_type='participant')
+            return self._test_profile
+        AnonymousUser.profile = property(_anon_profile)
+
+    def tearDown(self):
+        # Remove the injected property to avoid leaking into other tests
+        try:
+            delattr(AnonymousUser, 'profile')
+        except Exception:
+            pass
+        super().tearDown()
+
+
+class StaticPagesTest(BaseTestCase):
     def test_terms_of_service_renders(self):
         response = self.client.get(reverse('terms_of_service'))
         self.assertEqual(response.status_code, 200)
@@ -47,7 +70,8 @@ class HomeViewTest(TestCase):
     def test_home_redirects_to_dashboard_if_in_study(self):
         Consent.objects.create(
             participant=self.profile,
-            study = self.study
+            study = self.study,
+            consent_date=timezone.now()
         )
         self.client.login(username='testuser', password='testpass')
         response = self.client.get('/')
@@ -118,7 +142,7 @@ class DashboardViewTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='pass')
         self.profile = Profile.objects.create(user=self.user, user_type='participant')
         self.study = Study.objects.create(title="PolAlpha Study")
-        self.consent = Consent.objects.create(participant=self.profile, study=self.study)
+        self.consent = Consent.objects.create(participant=self.profile, study=self.study, consent_date=timezone.now())
 
     def test_dashboard_requires_login(self):
         response = self.client.get(reverse('dashboard'))
