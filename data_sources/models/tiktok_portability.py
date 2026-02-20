@@ -46,7 +46,14 @@ class TikTokPortabilityDataSource(DataSource):
         return reverse('auth_start', args=[self.id])
     
     def get_confirm_url(self):
-        return reverse('auth_callback', args=[self.id])
+        # Only provide the confirmation URL when the generic DataSource
+        # `status` indicates setup is still pending. If the source has
+        # moved to `processing` or `active`, OAuth/confirmation is not
+        # required and we return None so templates won't attempt to
+        # reverse the URL (which previously used an incorrect arg).
+        if getattr(self, 'status', None) != 'pending':
+            return None
+        return reverse('auth_callback')
     
     def get_data_types(self):
         return ['tiktok_portability']
