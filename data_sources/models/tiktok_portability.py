@@ -14,6 +14,7 @@ from .base import DataSource
 
 
 class TikTokPortabilityDataSource(DataSource):
+    DEFAULT_REQUEST_TIMEOUT = 10
     PROCESSING_STATUS_CHOICES = (
         ('authorized', 'Authorized, waiting for data'),
         ('data_requested', 'Data portability request submitted'),
@@ -93,6 +94,54 @@ class TikTokPortabilityDataSource(DataSource):
         
         return code_verifier, code_challenge
 
+    def _store_token_info(self, token_info):
+        """Store token info dict into model fields, encrypting tokens.
+
+        Handles encryption errors narrowly and records messages into
+        `processing_log` without swallowing unrelated exceptions.
+        """
+        data = token_info.get('data', {})
+
+        # access token
+        try:
+            access_plain = data['access_token']
+        except KeyError:
+            raise KeyError("access_token missing from token_info")
+
+        try:
+            self.access_token = crypto.encrypt_text(access_plain)
+        except (ValueError, TypeError) as e:
+            self.access_token = None
+            self.processing_log = (self.processing_log or '') + f"Failed to encrypt access_token: {e}\n"
+
+        # refresh token (optional)
+        if data.get('refresh_token'):
+            try:
+                self.refresh_token = crypto.encrypt_text(data['refresh_token'])
+            except (ValueError, TypeError) as e:
+                self.refresh_token = None
+                self.processing_log = (self.processing_log or '') + f"Failed to encrypt refresh_token: {e}\n"
+        else:
+            self.refresh_token = ''
+
+        # expiry
+        expires_in = data.get('expires_in')
+        if expires_in is not None:
+            try:
+                self.token_expiry = timezone.now() + timedelta(seconds=int(expires_in))
+            except (TypeError, ValueError):
+                self.token_expiry = None
+                self.processing_log = (self.processing_log or '') + "Invalid expires_in value; token_expiry not set.\n"
+
+        # user id
+        if data.get('open_id'):
+            self.tiktok_user_id = data.get('open_id')
+
+        # ensure the model status reflects authorization
+        self.processing_status = 'authorized'
+        # clear temporary PKCE verifier
+        self.code_verifier = ''
+
 
     def get_auth_url(self, request):
         code_verifier, code_challenge = self.generate_pkce_pair()
@@ -136,34 +185,22 @@ class TikTokPortabilityDataSource(DataSource):
         }
 
         try:
-            response = requests.post(token_url, data=token_data)
+            response = requests.post(token_url, data=token_data, timeout=self.DEFAULT_REQUEST_TIMEOUT)
             response.raise_for_status()
             token_info = response.json()
+            # Reuse helper to store and encrypt token fields
+            try:
+                self._store_token_info(token_info)
+            except KeyError:
+                return False, "Invalid response from TikTok during token exchange."
 
-            try:
-                self.access_token = crypto.encrypt_text(token_info['data']['access_token'])
-            except Exception as e:
-                self.access_token = None
-                self.processing_log = (self.processing_log or '') + f"Failed to encrypt access_token: {e}\n"
-            try:
-                if token_info['data'].get('refresh_token'):
-                    self.refresh_token = crypto.encrypt_text(token_info['data']['refresh_token'])
-                else:
-                    self.refresh_token = ''
-            except Exception as e:
-                self.refresh_token = None
-                self.processing_log = (self.processing_log or '') + f"Failed to encrypt refresh_token: {e}\n"
-            expires_in = token_info['data']['expires_in']
-            self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
-            self.tiktok_user_id = token_info['data']['open_id']
-            self.processing_status = 'authorized'
-            self.code_verifier = ''
             try:
                 # Mark as processing so the dashboard shows that setup is complete
                 # and we're waiting for data to be prepared.
                 self.status = 'processing'
             except Exception:
                 pass
+
             self.save()
             return True, "Authorization successful."
         
@@ -180,8 +217,10 @@ class TikTokPortabilityDataSource(DataSource):
         # decrypt refresh token for request
         try:
             refresh_token_plain = crypto.decrypt_text(self.refresh_token)
-        except Exception:
-            refresh_token_plain = self.refresh_token
+        except (ValueError, TypeError) as e:
+            # If decryption fails, do not attempt to use the encrypted blob
+            self.processing_log = (self.processing_log or '') + f"Failed to decrypt refresh_token: {e}\n"
+            return False, "Failed to decrypt refresh token."
         token_data = {
             'client_key': settings.TIKTOK_CLIENT_KEY,
             'client_secret': settings.TIKTOK_CLIENT_SECRET,
@@ -190,17 +229,16 @@ class TikTokPortabilityDataSource(DataSource):
         }
 
         try:
-            response = requests.post(token_url, data=token_data)
+            response = requests.post(token_url, data=token_data, timeout=self.DEFAULT_REQUEST_TIMEOUT)
             response.raise_for_status()
             token_info = response.json()
 
             try:
-                self.access_token = crypto.encrypt_text(token_info['data']['access_token'])
-            except Exception as e:
-                self.access_token = None
-                self.processing_log = (self.processing_log or '') + f"Failed to encrypt refreshed access_token: {e}\n"
-            expires_in = token_info['data']['expires_in']
-            self.token_expiry = timezone.now() + timedelta(seconds=expires_in)
+                # Reuse storage helper which handles encryption and expiry
+                self._store_token_info(token_info)
+            except KeyError:
+                return False, "Invalid response from TikTok during token refresh."
+
             self.save()
             return True, "Access token refreshed successfully."
         
