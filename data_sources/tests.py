@@ -83,22 +83,54 @@ class DbConnectorTest(TestCase):
                 qstr = str(q).lower()
                 if 'select id, device_uuid from device_lookup' in qstr:
                     # return device_lookup mapping as dicts when dictionary=True
-                    self._rows = [{'id': 42, 'device_uuid': 'dev-uuid'}] if self.dictionary else [(42, 'dev-uuid')]
+                    # If params provided, filter the available mappings to those device_uuid values
+                    if params and self._rows:
+                        # params may be tuple of device_uuid strings
+                        vals = set(params) if isinstance(params, (list, tuple)) else {params}
+                        if self.dictionary:
+                            self._rows = [r for r in self._rows if str(r.get('device_uuid')) in set(map(str, vals))]
+                        else:
+                            self._rows = [tuple([r.get('id'), r.get('device_uuid')]) for r in self._rows if str(r.get('device_uuid')) in set(map(str, vals))]
+                    else:
+                        self._rows = [{'id': 42, 'device_uuid': 'dev-uuid'}] if self.dictionary else [(42, 'dev-uuid')]
                 elif 'show tables' in qstr:
                     # handled by separate cursor in FakeConnection
                     pass
                 elif '_transformed' in qstr:
                     # transformed table query -> return rows with device_uid
-                    if self.dictionary:
-                        self._rows = [{'device_uid': 42, 'val': 1}]
+                    # If the cursor has preloaded transformed rows, use them
+                    src_rows = getattr(self, '_transformed_rows', None)
+                    if src_rows:
+                        # If params are provided (e.g., device_uid filter), only return matching rows
+                        if params:
+                            def match_param(r, p):
+                                try:
+                                    return int(p) == int(r.get('device_uid'))
+                                except Exception:
+                                    return str(p) == str(r.get('device_uid'))
+
+                            # params may be a single value or sequence
+                            param_vals = params if isinstance(params, (list, tuple)) else (params,)
+                            filtered = [r for r in src_rows for p in param_vals if match_param(r, p)]
+                        else:
+                            filtered = list(src_rows)
+
+                        if self.dictionary:
+                            self._rows = filtered
+                        else:
+                            self._rows = [(r.get('device_uid'), r.get('val')) for r in filtered]
                     else:
-                        self._rows = [(42, 1)]
+                        if self.dictionary:
+                            self._rows = [{'device_uid': 42, 'val': 1}]
+                        else:
+                            self._rows = [(42, 1)]
                 elif 'select' in qstr and '_transformed' not in qstr and 'device_lookup' not in qstr and 'show tables' not in qstr:
                     # non-transformed table -> device_id is a string (not device_uid)
                     if self.dictionary:
-                        self._rows = [{'device_id': 'dev-uuid', 'val': 1}]
+                        # return a distinct value to ensure these rows are distinguishable
+                        self._rows = [{'device_id': 'dev-uuid', 'val': 999}]
                     else:
-                        self._rows = [('dev-uuid', 1)]
+                        self._rows = [('dev-uuid', 999)]
                 else:
                     self._rows = []
 
@@ -113,21 +145,25 @@ class DbConnectorTest(TestCase):
 
         class FakeConnection:
             def __init__(self):
-                # first cursor used for SHOW TABLES
-                self._first = FakeCursor(rows=[('battery_transformed',)])
-                # second cursor (dictionary=True) returns device_lookup and transformed rows
-                self._second = FakeCursor(rows=[{'id': 42, 'device_uuid': 'dev-uuid'}], dictionary=True)
-                # transformed rows to be returned by _run_aware_table_query
+                # first cursor used for SHOW TABLES: include both raw and transformed tables
+                self._first = FakeCursor(rows=[('battery',), ('battery_transformed',), ('other_table',)])
+                # device_lookup mapping and other dictionary cursor results
+                self._second = FakeCursor(rows=[{'id': 42, 'device_uuid': 'dev-uuid'}, {'id': 99, 'device_uuid': 'other-uuid'}], dictionary=True)
+                # transformed rows to be returned by _run_aware_table_query (contains two device_uids)
                 self._transformed_rows = [
-                    {'device_uid': 42, 'val': 1}
+                    {'device_uid': 42, 'val': 1},
+                    {'device_uid': 99, 'val': 2}
                 ]
 
             def cursor(self, dictionary=False):
                 if not dictionary:
                     return self._first
                 # For dictionary cursor, we need a cursor that will return mappings
-                cur = FakeCursor(rows=self._transformed_rows, dictionary=True)
-                # make fetchall on this cursor return transformed rows when used for the query
+                # when a dictionary cursor is requested, return a cursor capable of
+                # returning both the device_lookup mappings and transformed rows
+                cur = FakeCursor(rows=self._second._rows, dictionary=True)
+                # store transformed rows on the cursor for execute to pick up when needed
+                cur._transformed_rows = list(self._transformed_rows)
                 return cur
 
             def close(self):
@@ -140,13 +176,28 @@ class DbConnectorTest(TestCase):
         with patch('data_sources.models.db_connector.mysql.connector.connect', side_effect=fake_connect):
             # Also patch get_device_ids_for_label to return a device uuid so query proceeds
             with patch('data_sources.models.db_connector.get_device_ids_for_label', return_value=['dev-uuid']):
+                # Query for device 'dev-uuid' should return only transformed rows
                 rows = db_connector.query_aware_data('SELECT *', 'label-1', 'battery', limit=10)
-                # Should return transformed rows with device_id injected
                 self.assertIsInstance(rows, list)
-                # The function maps device_uid to device_uuid for dict rows
-                if rows:
-                    first = rows[0]
-                    self.assertIn('device_id', first)
+                # Should only return transformed-row for device_uid 42 -> dev-uuid
+                self.assertEqual(len(rows), 1)
+                first = rows[0]
+                self.assertIn('device_id', first)
+                self.assertEqual(first.get('device_id'), 'dev-uuid')
+                self.assertEqual(first.get('val'), 1)
+
+                # Query for a different device should return the other transformed row
+                with patch('data_sources.models.db_connector.get_device_ids_for_label', return_value=['other-uuid']):
+                    rows2 = db_connector.query_aware_data('SELECT *', 'label-1', 'battery', limit=10)
+                    self.assertIsInstance(rows2, list)
+                    self.assertEqual(len(rows2), 1)
+                    first2 = rows2[0]
+                    self.assertEqual(first2.get('device_id'), 'other-uuid')
+                    self.assertEqual(first2.get('val'), 2)
+
+                # Ensure non-transformed table rows (val 999) are not returned
+                vals = [r.get('val') for r in rows]
+                self.assertNotIn(999, vals)
 
                 # Test count function uses query_aware_data and returns 0 or number
                 with patch('data_sources.models.db_connector.query_aware_data', return_value=[{'row_count': 5}]):
@@ -164,7 +215,6 @@ class DbConnectorTest(TestCase):
             AwareDataSource.objects.filter(profile=self.profile, name__startswith='Aware').exists()
         )
         self.assertTrue(source.name.startswith('Aware'))
-
 
     def test_render_form_when_extra_fields(self):
         # Patch the helper that decides whether the form has only the name
