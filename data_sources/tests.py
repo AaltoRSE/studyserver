@@ -93,6 +93,14 @@ class DbConnectorTest(TestCase):
                         self._rows = [{'device_uid': 42, 'val': 1}]
                     else:
                         self._rows = [(42, 1)]
+                elif 'select' in qstr and '_transformed' not in qstr and 'device_lookup' not in qstr and 'show tables' not in qstr:
+                    # non-transformed table -> device_id is a string (not device_uid)
+                    if self.dictionary:
+                        self._rows = [{'device_id': 'dev-uuid', 'val': 1}]
+                    else:
+                        self._rows = [('dev-uuid', 1)]
+                else:
+                    self._rows = []
 
             def fetchall(self):
                 return self._rows
