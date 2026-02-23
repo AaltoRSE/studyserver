@@ -81,8 +81,6 @@ class DataSource(PolymorphicModel):
         if not self.has_active_consent():
             print(f"No active consent for {self} ({self.pk}). Skipping processing.")
             return False, "No consent found."
-        else:
-            print(f"Processing data for {self} ({self.pk})...")
         # Optionally, call a hook for subclass-specific processing
         return self._process_data(*args, **kwargs)
 

@@ -16,12 +16,12 @@ from rest_framework.authentication import TokenAuthentication, SessionAuthentica
 from rest_framework.permissions import IsAuthenticated
 
 from study_server.utils import data_to_csv_response
-from datetime import datetime
 import base64
 from data_sources.models import DataSource
 from .models import Study, Consent
 from .forms import ConsentAcceptanceForm, DataSourceSelectionForm
 from . import services
+
 
 
 @login_required
@@ -158,6 +158,8 @@ def consent_checkbox_view(request, consent, study):
             if consent.data_source:
                 consent.is_complete = True
                 consent.consent_date = timezone.now()
+                earliest_start = study.get_earliest_data_start(consent.source_type)
+                consent.data_start = earliest_start or consent.consent_date
                 consent.save()
             return redirect(f"{reverse('consent_workflow', args=[study.id])}?consent_id={consent.id}")
     else:
@@ -203,6 +205,8 @@ def select_data_source_view(request, consent, profile, study):
                     consent.data_source = source
                     consent.is_complete = True
                     consent.consent_date = timezone.now()
+                    earliest_start = study.get_earliest_data_start(consent.source_type)
+                    consent.data_start = earliest_start or consent.consent_date
                     consent.save()
                     return redirect('consent_workflow', study_id=study.id)
         elif action == 'create':
@@ -304,18 +308,22 @@ def study_data_api(request, study_id):
         if data_type:
             data_types = [data_type] if data_type in data_types else []
 
-        consent_start = consent.consent_date
+        consent_start = consent.data_start or consent.consent_date
         if not consent_start:
             continue
 
-        interval_candidates = [_make_timezone_aware(dt) for dt in [consent_start, start_date] if dt is not None]
-        interval_start = max(interval_candidates) if interval_candidates else None
-
         consent_end = consent.revocation_date or timezone.now()
-        interval_end_candidates = [_make_timezone_aware(dt) for dt in [consent_end, end_date] if dt is not None]
-        interval_end = min(interval_end_candidates) if interval_end_candidates else None
-        
+
         for dt in data_types:
+            type_start, type_end = study.get_data_type_dates(consent.source_type, dt)
+
+            effective_start = type_start or consent_start
+            start_candidates = [_make_timezone_aware(d) for d in [effective_start, start_date] if d is not None]
+            interval_start = max(start_candidates) if start_candidates else None
+
+            end_candidates = [_make_timezone_aware(d) for d in [type_end, consent_end, end_date] if d is not None]
+            interval_end = min(end_candidates) if end_candidates else None
+
             data = source.fetch_data(
                 data_type=dt,
                 start_date=interval_start,
