@@ -11,7 +11,7 @@ from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
 from .models import DataSource, AwareDataSource, JsonUrlDataSource
 from studies.models import Consent
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from urllib.parse import urlencode
 
@@ -41,6 +41,8 @@ def link_consent_to_source(consent_id, data_source, profile):
         consent.data_source = data_source
         consent.is_complete = True
         consent.consent_date = timezone.now()
+        earliest_start = consent.study.get_earliest_data_start(consent.source_type)
+        consent.data_start = earliest_start or consent.consent_date
         consent.save()
 
 

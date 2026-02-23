@@ -2,8 +2,22 @@ from django.apps import apps
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
+from datetime import datetime
 from users.models import Profile
 from data_sources.models import DataSource
+
+
+def _parse_config_date(value):
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt)
+        return dt
+    except (ValueError, TypeError):
+        return None
 
 
 class Study(models.Model):
@@ -53,6 +67,29 @@ class Study(models.Model):
         # raw urls also should work directly
         return self.config_url
 
+    def get_data_type_dates(self, source_type, data_type):
+        """Return (data_start, data_end) datetimes for a data type from source_configurations."""
+        config = self.source_configurations.get(source_type)
+        if not isinstance(config, dict):
+            return None, None
+        type_config = config.get(data_type, {})
+        return (
+            _parse_config_date(type_config.get('data_start')),
+            _parse_config_date(type_config.get('data_end')),
+        )
+
+    def get_earliest_data_start(self, source_type):
+        """Return the earliest configured data_start across all data types, or None."""
+        config = self.source_configurations.get(source_type)
+        if not isinstance(config, dict):
+            return None
+        starts = [
+            _parse_config_date(v.get('data_start'))
+            for v in config.values() if isinstance(v, dict)
+        ]
+        starts = [s for s in starts if s is not None]
+        return min(starts) if starts else None
+
     def __str__(self):
         return self.title
 
@@ -77,6 +114,10 @@ class Consent(models.Model):
     is_complete = models.BooleanField(default=False)
     consent_text_accepted = models.BooleanField(default=False)
     consent_date = models.DateTimeField(null=True, blank=True)
+    data_start = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Start of the data collection period. May predate consent_date."
+    )
     revocation_date = models.DateTimeField(null=True, blank=True)
     
     def __str__(self):
