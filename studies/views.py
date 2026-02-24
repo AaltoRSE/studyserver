@@ -160,7 +160,7 @@ def consent_checkbox_view(request, consent, study):
                 consent.consent_date = timezone.now()
                 earliest_start = study.get_earliest_data_start(consent.source_type)
                 consent.data_start = earliest_start or consent.consent_date
-                consent.save()
+            consent.save()
             return redirect(f"{reverse('consent_workflow', args=[study.id])}?consent_id={consent.id}")
     else:
         form = ConsentAcceptanceForm()
