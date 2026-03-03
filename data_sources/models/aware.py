@@ -140,11 +140,6 @@ class AwareDataSource(DataSource):
                 "schedules": [],
                 "sensors": [
                     {"setting": "device_label", "value": self.device_label},
-                    {"setting": "status_webservice", "value": "true"},
-                    {"setting": "webservice_server", "value": f"https://aware.cs.aalto.fi:3446/index.php/webservice/index/Polalpha/{settings.STUDY_PASSWORD}"},
-                    {"setting": "frequency_webservice", "value": "60"},
-                    {"setting": "status_battery", "value": "true"},
-                    {"setting": "status_accelerometer", "value": "true"}
                 ]
             }
             for study in studies:
@@ -163,6 +158,11 @@ class AwareDataSource(DataSource):
                     config_json['sensors'].extend(sensors)
                 except requests.exceptions.RequestException:
                     continue
+            # Deduplicate sensors by "setting" key, keeping the last occurrence
+            seen = {}
+            for sensor in config_json['sensors']:
+                seen[sensor.get('setting')] = sensor
+            config_json['sensors'] = list(seen.values())
             return JsonResponse(config_json)
         
         elif view_type == "client_get_study_info":
