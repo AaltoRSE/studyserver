@@ -9,42 +9,17 @@ import os
 import requests
 import secrets
 import pandas as pd
-from niimpy.reading.google_portability import youtube_history as np_youtube_history
+from niimpy.reading.google_portability import (
+    youtube_history as np_youtube_history,
+    discover as np_read_discover,
+    google_lens_history as np_read_google_lens,
+    google_play_games_history as np_read_google_play_games,
+    google_play_store_history as np_read_google_play_store,
+    image_search_history as np_read_image_search,
+    search_history as np_read_search,
+    video_search_history as np_read_video_search,
+)
 import data_sources.utils.crypto as crypto
-
-def np_read_discover(zip_path, start_date=None, end_date=None):
-    """Read Discover activity data (likes, follows, not_interested) from a Google Portability zip."""
-    raise NotImplementedError
-
-
-def np_read_google_lens(zip_path, start_date=None, end_date=None):
-    """Read Google Lens search activity from a Google Portability zip."""
-    raise NotImplementedError
-
-
-def np_read_google_play_games(zip_path, start_date=None, end_date=None):
-    """Read Google Play Games activity from a Google Portability zip."""
-    raise NotImplementedError
-
-
-def np_read_google_play_store(zip_path, start_date=None, end_date=None):
-    """Read Google Play Store activity from a Google Portability zip."""
-    raise NotImplementedError
-
-
-def np_read_image_search(zip_path, start_date=None, end_date=None):
-    """Read Google Image Search activity from a Google Portability zip."""
-    raise NotImplementedError
-
-
-def np_read_search(zip_path, start_date=None, end_date=None):
-    """Read Google Search activity from a Google Portability zip."""
-    raise NotImplementedError
-
-
-def np_read_video_search(zip_path, start_date=None, end_date=None):
-    """Read Google Video Search activity from a Google Portability zip."""
-    raise NotImplementedError
 
 from urllib.parse import urlencode
 from .base import DataSource

@@ -10,7 +10,7 @@ from django.urls import path
 from django.contrib import messages
 from django.http import HttpResponseRedirect
 from study_server.urls import urlpatterns as real_urlpatterns
-from django.contrib.auth.models import AnonymousUser, User as DjangoUser
+from django.contrib.auth.models import AnonymousUser, User as DjangoUser, Group
 import uuid
 
 def test_message_view(request):
@@ -179,5 +179,312 @@ class ResearcherDashboardViewTest(TestCase):
         response = self.client.get(reverse('researcher_dashboard'))
         self.assertContains(response, self.study.title)
 
-    
 
+class ProfileModelTest(TestCase):
+    def test_profile_str(self):
+        user = User.objects.create_user(username='alice', password='pass')
+        profile = Profile.objects.create(user=user, user_type='participant')
+        self.assertEqual(str(profile), 'alice - participant')
+
+    def test_token_auto_created_on_user_creation(self):
+        user = User.objects.create_user(username='bob', password='pass')
+        self.assertTrue(Token.objects.filter(user=user).exists())
+
+    def test_profile_cascade_deletes_with_user(self):
+        user = User.objects.create_user(username='charlie', password='pass')
+        Profile.objects.create(user=user, user_type='participant')
+        user.delete()
+        self.assertFalse(Profile.objects.filter(user__username='charlie').exists())
+
+
+class SignupViewExtendedTest(TestCase):
+    def test_signup_get_renders_form(self):
+        response = self.client.get(reverse('signup'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_signup_password_mismatch(self):
+        response = self.client.post(reverse('signup'), {
+            'username': 'newuser',
+            'password1': 'StrongPass123',
+            'password2': 'WrongPass456',
+        })
+        self.assertEqual(response.status_code, 200)  # stays on page
+        self.assertFalse(User.objects.filter(username='newuser').exists())
+
+    def test_signup_duplicate_username(self):
+        User.objects.create_user(username='existing', password='pass')
+        response = self.client.post(reverse('signup'), {
+            'username': 'existing',
+            'password1': 'StrongPass123',
+            'password2': 'StrongPass123',
+        })
+        self.assertEqual(response.status_code, 200)  # stays on page
+        self.assertEqual(User.objects.filter(username='existing').count(), 1)
+
+    def test_signup_creates_participant_profile(self):
+        self.client.post(reverse('signup'), {
+            'username': 'partuser',
+            'password1': 'StrongPass123',
+            'password2': 'StrongPass123',
+        })
+        user = User.objects.get(username='partuser')
+        self.assertEqual(user.profile.user_type, 'participant')
+
+
+class SignupResearcherExtendedTest(TestCase):
+    def setUp(self):
+        Group.objects.get_or_create(name='Researchers')
+
+    def test_signup_researcher_creates_researcher_profile(self):
+        self.client.post(reverse('signup_researcher'), {
+            'username': 'res1',
+            'password1': 'StrongPass123',
+            'password2': 'StrongPass123',
+        })
+        user = User.objects.get(username='res1')
+        self.assertEqual(user.profile.user_type, 'researcher')
+        self.assertTrue(user.is_staff)
+
+    def test_signup_researcher_adds_to_group(self):
+        self.client.post(reverse('signup_researcher'), {
+            'username': 'res2',
+            'password1': 'StrongPass123',
+            'password2': 'StrongPass123',
+        })
+        user = User.objects.get(username='res2')
+        self.assertTrue(user.groups.filter(name='Researchers').exists())
+
+
+class LoginViewTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='loginuser', password='correctpass')
+        Profile.objects.create(user=self.user, user_type='participant')
+
+    def test_login_get_renders_form(self):
+        response = self.client.get(reverse('login'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_login_valid_credentials_redirects(self):
+        response = self.client.post(reverse('login'), {
+            'username': 'loginuser',
+            'password': 'correctpass',
+        })
+        self.assertRedirects(response, reverse('home'))
+
+    def test_login_invalid_credentials_shows_error(self):
+        response = self.client.post(reverse('login'), {
+            'username': 'loginuser',
+            'password': 'wrongpass',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Invalid username or password')
+
+
+class HomeViewExtendedTest(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.study = Study.objects.create(
+            title='Domain Study',
+            description='A study',
+            domain='testserver',
+            config_url='test_url'
+        )
+        self.user = User.objects.create_user(username='homeuser', password='pass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+
+    def test_home_no_matching_domain(self):
+        self.study.domain = 'other.example.com'
+        self.study.save()
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_home_unauthenticated_shows_study_detail(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        # Should not redirect to dashboard
+        self.assertNotEqual(response.status_code, 302)
+
+    def test_home_revoked_consent_shows_study_detail(self):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            consent_date=timezone.now(),
+            revocation_date=timezone.now()
+        )
+        self.client.login(username='homeuser', password='pass')
+        response = self.client.get('/')
+        # Revoked consent should NOT trigger redirect to dashboard
+        self.assertNotEqual(response.status_code, 302)
+
+
+class DashboardExtendedTest(TestCase):
+    def test_dashboard_redirects_researcher_to_researcher_dashboard(self):
+        user = User.objects.create_user(username='resuser', password='pass')
+        Profile.objects.create(user=user, user_type='researcher')
+        self.client.login(username='resuser', password='pass')
+        response = self.client.get(reverse('dashboard'))
+        self.assertRedirects(response, reverse('researcher_dashboard'))
+
+    def test_dashboard_shows_revoked_consent_in_past(self):
+        user = User.objects.create_user(username='pastuser', password='pass')
+        profile = Profile.objects.create(user=user, user_type='participant')
+        study = Study.objects.create(title='Past Study', config_url='test')
+        Consent.objects.create(
+            participant=profile,
+            study=study,
+            consent_date=timezone.now(),
+            revocation_date=timezone.now(),
+            source_type='SomeSource'
+        )
+        self.client.login(username='pastuser', password='pass')
+        response = self.client.get(reverse('dashboard'))
+        self.assertEqual(len(response.context['past_consents']), 1)
+
+
+class ResearcherDashboardExtendedTest(TestCase):
+    def test_researcher_dashboard_denies_participant(self):
+        user = User.objects.create_user(username='partuser2', password='pass')
+        Profile.objects.create(user=user, user_type='participant')
+        self.client.login(username='partuser2', password='pass')
+        response = self.client.get(reverse('researcher_dashboard'))
+        self.assertRedirects(response, reverse('dashboard'))
+
+    def test_researcher_dashboard_no_studies(self):
+        user = User.objects.create_user(username='emptyres', password='pass')
+        Profile.objects.create(user=user, user_type='researcher')
+        self.client.login(username='emptyres', password='pass')
+        response = self.client.get(reverse('researcher_dashboard'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['studies_data']), 0)
+
+    def test_researcher_dashboard_shows_participant_stats(self):
+        researcher_user = User.objects.create_user(username='statres', password='pass')
+        researcher_profile = Profile.objects.create(user=researcher_user, user_type='researcher')
+        study = Study.objects.create(title='Stats Study', config_url='test')
+        study.researchers.add(researcher_profile)
+
+        part_user = User.objects.create_user(username='statpart', password='pass')
+        part_profile = Profile.objects.create(user=part_user, user_type='participant')
+        Consent.objects.create(
+            participant=part_profile,
+            study=study,
+            consent_date=timezone.now(),
+            source_type='SomeSource',
+            is_complete=True
+        )
+
+        self.client.login(username='statres', password='pass')
+        response = self.client.get(reverse('researcher_dashboard'))
+        self.assertEqual(len(response.context['studies_data']), 1)
+        self.assertEqual(len(response.context['studies_data'][0]['participants']), 1)
+
+
+class ParticipantDetailTest(TestCase):
+    def setUp(self):
+        self.study = Study.objects.create(title='Detail Study', config_url='test')
+
+        self.researcher_user = User.objects.create_user(username='detres', password='pass')
+        self.researcher_profile = Profile.objects.create(user=self.researcher_user, user_type='researcher')
+        self.study.researchers.add(self.researcher_profile)
+
+        self.part_user = User.objects.create_user(username='detpart', password='pass')
+        self.part_profile = Profile.objects.create(user=self.part_user, user_type='participant')
+        self.consent = Consent.objects.create(
+            participant=self.part_profile,
+            study=self.study,
+            consent_date=timezone.now(),
+            source_type='SomeSource'
+        )
+        self.url = reverse('participant_detail', args=[self.study.id, self.part_profile.id])
+
+    def test_participant_detail_requires_login(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('login', response.url)
+
+    def test_participant_detail_denies_participant_user(self):
+        self.client.login(username='detpart', password='pass')
+        response = self.client.get(self.url)
+        self.assertRedirects(response, reverse('dashboard'))
+
+    def test_participant_detail_denies_unrelated_researcher(self):
+        other_user = User.objects.create_user(username='otherres', password='pass')
+        Profile.objects.create(user=other_user, user_type='researcher')
+        self.client.login(username='otherres', password='pass')
+        response = self.client.get(self.url, follow=True)
+        self.assertRedirects(response, reverse('researcher_dashboard'))
+
+    def test_participant_detail_allows_assigned_researcher(self):
+        self.client.login(username='detres', password='pass')
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_participant_detail_allows_superuser(self):
+        su = User.objects.create_superuser(username='super', password='pass')
+        Profile.objects.create(user=su, user_type='researcher')
+        self.client.login(username='super', password='pass')
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_participant_detail_404_invalid_study(self):
+        self.client.login(username='detres', password='pass')
+        url = reverse('participant_detail', args=[9999, self.part_profile.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_participant_detail_404_invalid_participant(self):
+        self.client.login(username='detres', password='pass')
+        url = reverse('participant_detail', args=[self.study.id, 9999])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+
+class ManageTokenExtendedTest(TestCase):
+    def test_manage_token_requires_login(self):
+        response = self.client.get(reverse('manage_token'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('login', response.url)
+
+    def test_manage_token_shows_researcher_flag(self):
+        user = User.objects.create_user(username='tokenres', password='pass')
+        Profile.objects.create(user=user, user_type='researcher')
+        self.client.login(username='tokenres', password='pass')
+        response = self.client.get(reverse('manage_token'))
+        self.assertTrue(response.context['is_researcher'])
+
+
+class MyDataApiTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='apiuser', password='pass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+        self.token = Token.objects.get(user=self.user)
+
+    def test_my_data_api_requires_auth(self):
+        response = self.client.get(reverse('my_data_api'))
+        self.assertEqual(response.status_code, 401)
+
+    def test_my_data_api_token_auth(self):
+        response = self.client.get(
+            reverse('my_data_api'),
+            HTTP_AUTHORIZATION=f'Token {self.token.key}'
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_my_data_api_returns_json_by_default(self):
+        response = self.client.get(
+            reverse('my_data_api'),
+            HTTP_AUTHORIZATION=f'Token {self.token.key}'
+        )
+        data = response.json()
+        self.assertIn('data_count', data)
+        self.assertIn('data_types', data)
+        self.assertIn('data', data)
+
+    def test_my_data_api_no_sources_returns_empty(self):
+        response = self.client.get(
+            reverse('my_data_api'),
+            HTTP_AUTHORIZATION=f'Token {self.token.key}'
+        )
+        data = response.json()
+        self.assertEqual(data['data_count'], 0)
+        self.assertEqual(data['data'], [])

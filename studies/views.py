@@ -77,14 +77,8 @@ def revoke_consent(request, consent_id):
     study = consent.study
 
     if not consent.is_optional:
-        # Consent is mandatory, cannot revoke individually
         messages.info(request, "This consent is mandatory for the study. To withdraw, please use the withdrawal page.")
-        withdrawal_url = reverse('withdraw_from_study', args=[study.id])
-        return render(request, 'studies/cannot_revoke_mandatory.html', {
-            'study': study,
-            'consent': consent,
-            'withdrawal_url': withdrawal_url
-        })
+        return redirect('withdraw_from_study', study_id=study.id)
 
     if request.method == 'POST':
         consent.data_source = None

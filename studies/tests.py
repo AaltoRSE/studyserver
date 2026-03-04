@@ -1,3 +1,764 @@
+from unittest.mock import patch
 from django.test import TestCase
+from django.urls import reverse
+from django.contrib.auth.models import User
+from django.utils import timezone
+from django.http import Http404
 
-# Create your tests here.
+from users.models import Profile
+from data_sources.models.aware import AwareDataSource
+from data_sources.models.jsonurl import JsonUrlDataSource
+from .models import Study, Consent
+from .views import get_next_consent
+
+
+MOCK_CONSENT_TEMPLATE = "<div>Consent</div><div id='consent-form'>{{ consent_form }}</div>"
+MOCK_STUDY_PAGE_HTML = "<h1>Test Study</h1>"
+
+
+class StudyTestMixin:
+    def setUp(self):
+        self.user = User.objects.create_user(username='participant', password='testpass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+        self.researcher_user = User.objects.create_user(username='researcher', password='testpass')
+        self.researcher_profile = Profile.objects.create(user=self.researcher_user, user_type='researcher')
+        self.study = Study.objects.create(
+            title='Test Study',
+            description='A test study',
+            config_url='https://github.com/example/study-repo',
+            required_data_sources=['AwareDataSource'],
+            optional_data_sources=['JsonUrlDataSource'],
+        )
+        self.study.researchers.add(self.researcher_profile)
+        self.client.login(username='participant', password='testpass')
+
+
+# ---------------------------------------------------------------------------
+# 1. StudyModelTest
+# ---------------------------------------------------------------------------
+
+class StudyModelTest(TestCase):
+
+    def setUp(self):
+        self.study = Study.objects.create(
+            title='Model Study',
+            description='desc',
+            config_url='https://github.com/org/repo',
+        )
+
+    def test_str_returns_title(self):
+        self.assertEqual(str(self.study), 'Model Study')
+
+    def test_raw_content_base_url_github(self):
+        self.study.config_url = 'https://github.com/org/repo'
+        self.study.save()
+        self.assertEqual(
+            self.study.raw_content_base_url,
+            'https://raw.githubusercontent.com/org/repo/main/'
+        )
+
+    def test_raw_content_base_url_plain(self):
+        self.study.config_url = 'https://example.com/config'
+        self.study.save()
+        self.assertEqual(self.study.raw_content_base_url, 'https://example.com/config')
+
+    def test_raw_content_base_url_empty(self):
+        self.study.config_url = ''
+        self.study.save()
+        self.assertIsNone(self.study.raw_content_base_url)
+
+    def test_get_data_type_dates_with_config(self):
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {
+                    'data_start': '2024-01-01T00:00:00',
+                    'data_end': '2024-12-31T00:00:00',
+                }
+            }
+        }
+        self.study.save()
+        start, end = self.study.get_data_type_dates('AwareDataSource', 'battery')
+        self.assertIsNotNone(start)
+        self.assertIsNotNone(end)
+        self.assertEqual(start.year, 2024)
+        self.assertEqual(start.month, 1)
+        self.assertEqual(end.year, 2024)
+        self.assertEqual(end.month, 12)
+
+    def test_get_data_type_dates_missing_source_type(self):
+        self.study.source_configurations = {}
+        self.study.save()
+        start, end = self.study.get_data_type_dates('AwareDataSource', 'battery')
+        self.assertIsNone(start)
+        self.assertIsNone(end)
+
+    def test_get_earliest_data_start(self):
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {'data_start': '2024-06-01T00:00:00'},
+                'screen': {'data_start': '2024-01-01T00:00:00'},
+                'locations': {'data_start': '2024-03-01T00:00:00'},
+            }
+        }
+        self.study.save()
+        earliest = self.study.get_earliest_data_start('AwareDataSource')
+        self.assertIsNotNone(earliest)
+        self.assertEqual(earliest.month, 1)
+        self.assertEqual(earliest.day, 1)
+
+    def test_get_earliest_data_start_no_config(self):
+        self.study.source_configurations = {}
+        self.study.save()
+        result = self.study.get_earliest_data_start('AwareDataSource')
+        self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# 2. ConsentModelTest
+# ---------------------------------------------------------------------------
+
+class ConsentModelTest(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='participant2', password='testpass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+        self.study = Study.objects.create(
+            title='Consent Study',
+            description='desc',
+            config_url='https://github.com/org/repo',
+        )
+
+    def test_str_format(self):
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+        )
+        expected = f"Consent of {self.user.username} for {self.study.title}"
+        self.assertEqual(str(consent), expected)
+
+
+# ---------------------------------------------------------------------------
+# 3. JoinStudyViewTest
+# ---------------------------------------------------------------------------
+
+class JoinStudyViewTest(StudyTestMixin, TestCase):
+
+    def test_creates_required_consents(self):
+        url = reverse('join_study', args=[self.study.id])
+        self.client.get(url)
+        consent = Consent.objects.filter(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_optional=False,
+        )
+        self.assertTrue(consent.exists())
+
+    def test_creates_optional_consents(self):
+        url = reverse('join_study', args=[self.study.id])
+        self.client.get(url)
+        consent = Consent.objects.filter(
+            participant=self.profile,
+            study=self.study,
+            source_type='JsonUrlDataSource',
+            is_optional=True,
+        )
+        self.assertTrue(consent.exists())
+
+    def test_redirects_to_consent_workflow(self):
+        url = reverse('join_study', args=[self.study.id])
+        response = self.client.get(url)
+        expected_url = reverse('consent_workflow', args=[self.study.id])
+        self.assertRedirects(response, expected_url, fetch_redirect_response=False)
+
+    def test_requires_login(self):
+        self.client.logout()
+        url = reverse('join_study', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response['Location'])
+
+    def test_nonexistent_study_404(self):
+        url = reverse('join_study', args=[99999])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# 4. ConsentCheckboxViewTest
+# ---------------------------------------------------------------------------
+
+class ConsentCheckboxViewTest(StudyTestMixin, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=False,
+            is_complete=False,
+        )
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_get_renders_consent_form(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'consent-form')
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_saves_consent_text_accepted_to_db(self, mock_template):
+        """REGRESSION TEST: POST with accept_consent must persist consent_text_accepted=True to DB."""
+        url = reverse('consent_workflow', args=[self.study.id])
+        self.client.post(url, {'accept_consent': True})
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertTrue(refreshed.consent_text_accepted)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_missing_checkbox_does_not_save(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.post(url, {})
+        self.assertEqual(response.status_code, 200)
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertFalse(refreshed.consent_text_accepted)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_redirects_to_workflow_with_consent_id(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.post(url, {'accept_consent': True})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(str(self.consent.id), response['Location'])
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_with_data_source_marks_complete(self, mock_template):
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Test Aware Source',
+            status='active',
+        )
+        self.consent.data_source = source
+        self.consent.save()
+
+        url = reverse('consent_workflow', args=[self.study.id])
+        self.client.post(url, {'accept_consent': True})
+
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertTrue(refreshed.is_complete)
+        self.assertIsNotNone(refreshed.consent_date)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_data_start_from_config(self, mock_template):
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {'data_start': '2024-01-01T00:00:00'},
+            }
+        }
+        self.study.save()
+
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Test Aware Config Source',
+            status='active',
+        )
+        self.consent.data_source = source
+        self.consent.save()
+
+        url = reverse('consent_workflow', args=[self.study.id])
+        self.client.post(url, {'accept_consent': True})
+
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertIsNotNone(refreshed.data_start)
+        self.assertEqual(refreshed.data_start.year, 2024)
+        self.assertEqual(refreshed.data_start.month, 1)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_data_start_fallback_to_consent_date(self, mock_template):
+        self.study.source_configurations = {}
+        self.study.save()
+
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Test Aware Fallback Source',
+            status='active',
+        )
+        self.consent.data_source = source
+        self.consent.save()
+
+        url = reverse('consent_workflow', args=[self.study.id])
+        self.client.post(url, {'accept_consent': True})
+
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertIsNotNone(refreshed.data_start)
+        self.assertIsNotNone(refreshed.consent_date)
+        self.assertEqual(
+            refreshed.data_start.replace(microsecond=0),
+            refreshed.consent_date.replace(microsecond=0),
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5. SelectDataSourceViewTest
+# ---------------------------------------------------------------------------
+
+class SelectDataSourceViewTest(StudyTestMixin, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=True,
+            is_complete=False,
+        )
+        self.source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='My Aware Source',
+            status='active',
+        )
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_get_renders_selection_form(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_select_links_data_source(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        self.client.post(url, {'action': 'select', 'source_id': self.source.id})
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertEqual(refreshed.data_source, self.source)
+        self.assertTrue(refreshed.is_complete)
+        self.assertIsNotNone(refreshed.consent_date)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_select_redirects_to_workflow(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.post(url, {'action': 'select', 'source_id': self.source.id})
+        self.assertEqual(response.status_code, 302)
+        expected_url = reverse('consent_workflow', args=[self.study.id])
+        self.assertIn(expected_url, response['Location'])
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_create_redirects_to_add_data_source(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.post(url, {'action': 'create'})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/data-sources/add/', response['Location'])
+        self.assertIn('consent_id', response['Location'])
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_post_empty_source_id_does_not_complete(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        self.client.post(url, {'action': 'select', 'source_id': ''})
+        refreshed = Consent.objects.get(pk=self.consent.pk)
+        self.assertFalse(refreshed.is_complete)
+
+
+# ---------------------------------------------------------------------------
+# 6. ConsentWorkflowOrchestratorTest
+# ---------------------------------------------------------------------------
+
+class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_redirects_to_dashboard_when_no_incomplete_consents(self, mock_template):
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('dashboard', response['Location'])
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_routes_to_checkbox_when_text_not_accepted(self, mock_template):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=False,
+            is_complete=False,
+        )
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'consent-form')
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_routes_to_create_flow_when_no_sources_exist(self, mock_template):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=True,
+            is_complete=False,
+        )
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/data-sources/add/', response['Location'])
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_routes_to_select_view_when_sources_exist(self, mock_template):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=True,
+            is_complete=False,
+        )
+        AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Existing Source',
+            status='active',
+        )
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_consent_id_param_targets_specific_consent(self, mock_template):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=False,
+            is_complete=False,
+        )
+        second_consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            consent_text_accepted=False,
+            is_complete=False,
+        )
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url, {'consent_id': second_consent.id})
+        self.assertEqual(response.status_code, 200)
+
+    @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
+    def test_optional_only_consents_redirect_to_dashboard(self, mock_template):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='JsonUrlDataSource',
+            consent_text_accepted=False,
+            is_complete=False,
+            is_optional=True,
+        )
+        url = reverse('consent_workflow', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('dashboard', response['Location'])
+
+
+# ---------------------------------------------------------------------------
+# 7. WithdrawFromStudyViewTest
+# ---------------------------------------------------------------------------
+
+class WithdrawFromStudyViewTest(StudyTestMixin, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.source1 = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Withdraw Source 1',
+            status='active',
+        )
+        self.source2 = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Withdraw Source 2',
+            status='active',
+        )
+        self.consent1 = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=self.source1,
+            is_complete=True,
+            consent_date=timezone.now(),
+        )
+        self.consent2 = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=self.source2,
+            is_complete=True,
+            consent_date=timezone.now(),
+        )
+
+    def test_get_renders_confirmation(self):
+        url = reverse('withdraw_from_study', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_post_revokes_all_active_consents(self):
+        url = reverse('withdraw_from_study', args=[self.study.id])
+        self.client.post(url)
+        self.consent1.refresh_from_db()
+        self.consent2.refresh_from_db()
+        self.assertIsNotNone(self.consent1.revocation_date)
+        self.assertIsNone(self.consent1.data_source)
+        self.assertFalse(self.consent1.is_complete)
+        self.assertIsNotNone(self.consent2.revocation_date)
+        self.assertIsNone(self.consent2.data_source)
+        self.assertFalse(self.consent2.is_complete)
+
+    def test_post_skips_already_revoked(self):
+        revoked_time = timezone.now() - timezone.timedelta(days=1)
+        revoked_consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=False,
+            revocation_date=revoked_time,
+        )
+        url = reverse('withdraw_from_study', args=[self.study.id])
+        self.client.post(url)
+        revoked_consent.refresh_from_db()
+        # The revocation_date should still be the original, not updated
+        self.assertEqual(
+            revoked_consent.revocation_date.replace(microsecond=0),
+            revoked_time.replace(microsecond=0),
+        )
+
+    def test_post_redirects_to_dashboard(self):
+        url = reverse('withdraw_from_study', args=[self.study.id])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('dashboard', response['Location'])
+
+    def test_requires_login(self):
+        self.client.logout()
+        url = reverse('withdraw_from_study', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login', response['Location'])
+
+
+# ---------------------------------------------------------------------------
+# 8. RevokeConsentViewTest
+# ---------------------------------------------------------------------------
+
+class RevokeConsentViewTest(StudyTestMixin, TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self.source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Revoke Source',
+            status='active',
+        )
+        self.consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=self.source,
+            is_complete=True,
+            is_optional=True,
+            consent_date=timezone.now(),
+        )
+
+    def test_get_optional_renders_confirmation(self):
+        url = reverse('revoke_consent', args=[self.consent.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_post_optional_revokes_and_creates_new(self):
+        url = reverse('revoke_consent', args=[self.consent.id])
+        self.client.post(url)
+        self.consent.refresh_from_db()
+        self.assertIsNotNone(self.consent.revocation_date)
+        self.assertIsNone(self.consent.data_source)
+        self.assertFalse(self.consent.is_complete)
+        new_consent = Consent.objects.filter(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_optional=True,
+            revocation_date__isnull=True,
+        ).first()
+        self.assertIsNotNone(new_consent)
+        self.assertNotEqual(new_consent.pk, self.consent.pk)
+
+    def test_post_redirects_to_dashboard(self):
+        url = reverse('revoke_consent', args=[self.consent.id])
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('dashboard', response['Location'])
+
+    def test_cannot_revoke_other_users_consent(self):
+        other_user = User.objects.create_user(username='other_participant', password='testpass')
+        Profile.objects.create(user=other_user, user_type='participant')
+        self.client.login(username='other_participant', password='testpass')
+        url = reverse('revoke_consent', args=[self.consent.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# 9. StudyDetailViewTest
+# ---------------------------------------------------------------------------
+
+class StudyDetailViewTest(StudyTestMixin, TestCase):
+
+    @patch('studies.services.get_study_page_html', return_value=MOCK_STUDY_PAGE_HTML)
+    def test_renders_for_anonymous_user(self, mock_page):
+        self.client.logout()
+        url = reverse('study_detail', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    @patch('studies.services.get_study_page_html', return_value=MOCK_STUDY_PAGE_HTML)
+    def test_user_in_study_true_with_active_consent(self, mock_page):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=True,
+            consent_date=timezone.now(),
+        )
+        url = reverse('study_detail', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.study.title)
+
+    @patch('studies.services.get_study_page_html', return_value=MOCK_STUDY_PAGE_HTML)
+    def test_user_in_study_false_with_revoked_consent(self, mock_page):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=False,
+            revocation_date=timezone.now(),
+        )
+        url = reverse('study_detail', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    @patch('studies.services.get_study_page_html', return_value=MOCK_STUDY_PAGE_HTML)
+    def test_nonexistent_study_404(self, mock_page):
+        url = reverse('study_detail', args=[99999])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# 10. GetNextConsentHelperTest
+# ---------------------------------------------------------------------------
+
+class GetNextConsentHelperTest(StudyTestMixin, TestCase):
+
+    def test_returns_specific_consent_by_id(self):
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=False,
+            is_optional=False,
+        )
+        result = get_next_consent(self.profile, self.study, consent_id=consent.id)
+        self.assertEqual(result, consent)
+
+    def test_404_for_nonexistent_id(self):
+        self.assertRaises(Http404, get_next_consent, self.profile, self.study, consent_id=99999)
+
+    def test_returns_first_incomplete_required(self):
+        consent1 = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=False,
+            is_optional=False,
+        )
+        consent2 = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=False,
+            is_optional=False,
+        )
+        result = get_next_consent(self.profile, self.study)
+        self.assertIsNotNone(result)
+        self.assertIn(result, [consent1, consent2])
+
+    def test_returns_none_when_all_complete(self):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=True,
+            is_optional=False,
+            consent_date=timezone.now(),
+        )
+        result = get_next_consent(self.profile, self.study)
+        self.assertIsNone(result)
+
+    def test_ignores_optional_consents(self):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='JsonUrlDataSource',
+            is_complete=False,
+            is_optional=True,
+        )
+        result = get_next_consent(self.profile, self.study)
+        self.assertIsNone(result)
+
+    def test_ignores_revoked_consents(self):
+        Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            is_complete=False,
+            is_optional=False,
+            revocation_date=timezone.now(),
+        )
+        result = get_next_consent(self.profile, self.study)
+        self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# 11. StudyDataApiTest
+# ---------------------------------------------------------------------------
+
+class StudyDataApiTest(StudyTestMixin, TestCase):
+
+    def test_unauthorized_user_403(self):
+        # participant (not researcher) should get 403
+        url = reverse('study_data_api', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 403)
+
+    def test_researcher_can_access(self):
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_superuser_can_access(self):
+        superuser = User.objects.create_superuser(
+            username='superadmin', password='testpass', email='admin@example.com'
+        )
+        self.client.login(username='superadmin', password='testpass')
+        url = reverse('study_data_api', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_returns_json_format(self):
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api', args=[self.study.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('study', data)
+        self.assertIn('data_count', data)
+        self.assertIn('data_types', data)
+        self.assertIn('data', data)
+
+    def test_nonexistent_study_404(self):
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api', args=[99999])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)

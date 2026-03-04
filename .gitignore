@@ -13,9 +13,11 @@ study_server/local_settings.py
 
 # IDEs
 .vscode/
+CLAUDE.md
 
 # Data
 data/
 
 # Automation
 celerybeat-schedule*
+
