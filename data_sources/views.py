@@ -12,6 +12,7 @@ from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
 from .models import DataSource, AwareDataSource, JsonUrlDataSource
 from studies.models import Consent
 from datetime import date, datetime, time, timedelta
+import zoneinfo
 
 from urllib.parse import urlencode
 
@@ -181,8 +182,9 @@ def view_data_source(request, source_id):
         end_date = form.cleaned_data.get('end_date')
 
         if selected_type:
-            start_datetime = datetime.combine(start_date, time.min) if start_date else None
-            end_datetime = datetime.combine(end_date, time.max) if end_date else None
+            tz = zoneinfo.ZoneInfo('Europe/Helsinki')
+            start_datetime = datetime.combine(start_date, time.min, tzinfo=tz) if start_date else None
+            end_datetime = datetime.combine(end_date, time.max, tzinfo=tz) if end_date else None
             all_data = real_instance.fetch_data(
                 data_type=selected_type, 
                 start_date=start_datetime,
