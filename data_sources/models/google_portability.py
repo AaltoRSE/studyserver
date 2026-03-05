@@ -124,16 +124,17 @@ class GooglePortabilityDataSource(DataSource):
         try:
             tmp = crypto.decrypt_file_to_temp(csv_path)
             try:
-                df = pd.read_csv(tmp)
+                df = pd.read_csv(tmp, parse_dates=['timestamp'])
             finally:
                 try:
                     os.remove(tmp)
                 except Exception:
                     pass
             if start_date:
-                df = df[df['timestamp'] >= start_date.timestamp() * 1000]
+                df = df[df['timestamp'] >= pd.Timestamp(start_date)]
             if end_date:
-                df = df[df['timestamp'] <= end_date.timestamp() * 1000]
+                df = df[df['timestamp'] <= pd.Timestamp(end_date)]
+            df['timestamp'] = df['timestamp'].astype('int64') // 10**6
             start = int(offset) if offset else 0
             end = start + int(limit) if limit is not None else None
             return df.iloc[start:end].to_dict('records')
@@ -150,16 +151,16 @@ class GooglePortabilityDataSource(DataSource):
         try:
             tmp = crypto.decrypt_file_to_temp(csv_path)
             try:
-                df = pd.read_csv(tmp)
+                df = pd.read_csv(tmp, parse_dates=['timestamp'])
             finally:
                 try:
                     os.remove(tmp)
                 except Exception:
                     pass
             if start_date:
-                df = df[df['timestamp'] >= int(start_date.timestamp() * 1000)]
+                df = df[df['timestamp'] >= pd.Timestamp(start_date)]
             if end_date:
-                df = df[df['timestamp'] <= int(end_date.timestamp() * 1000)]
+                df = df[df['timestamp'] <= pd.Timestamp(end_date)]
             return len(df)
         except Exception as e:
             print(f"Error counting {data_type} data: {e}")
@@ -470,9 +471,7 @@ class GooglePortabilityDataSource(DataSource):
                             df = reader(tmp_fp)
                             if df is None or df.empty:
                                 continue
-                            # Convert DatetimeIndex to unix milliseconds column
                             df = df.reset_index()
-                            df['timestamp'] = df['timestamp'].astype('int64') // 10**6
                             df["device_id"] = str(self.device_id)
                             csv_path = self._csv_path(data_type)
                             existing_df = pd.DataFrame()

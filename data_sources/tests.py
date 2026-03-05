@@ -383,7 +383,7 @@ class GooglePortabilityDataSourceTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/data-sources/oauth/start/', response.url)
 
-    def test_extract_and_process_converts_timestamp_to_unix_ms(self):
+    def test_extract_and_process_timestamp(self):
         from cryptography.fernet import Fernet
         key = Fernet.generate_key().decode()
 
@@ -400,7 +400,7 @@ class GooglePortabilityDataSourceTest(TestCase):
             {'title': ['test video']},
             index=pd.DatetimeIndex([known_time], name='timestamp'),
         )
-        expected_ms = int(known_time.timestamp() * 1000)  # 1705320000000
+        expected_ms = int(known_time.timestamp() * 1000)
 
         # Mock a single reader that returns our DataFrame
         mock_reader = MagicMock(return_value=mock_df)
@@ -418,15 +418,29 @@ class GooglePortabilityDataSourceTest(TestCase):
                                 with patch('data_sources.models.google_portability.os.remove'):
                                     source.extract_and_process()
 
-        # Parse the captured CSV
+        # CSV should store datetime strings, not milliseconds
         self.assertEqual(len(captured_csv), 1)
         csv_bytes = list(captured_csv.values())[0]
-        df = pd.read_csv(io.BytesIO(csv_bytes))
+        df = pd.read_csv(io.BytesIO(csv_bytes), parse_dates=['timestamp'])
 
         self.assertIn('timestamp', df.columns)
         self.assertEqual(len(df), 1)
-        self.assertEqual(int(df['timestamp'].iloc[0]), expected_ms)
+        self.assertEqual(df['timestamp'].iloc[0], known_time)
         self.assertEqual(df['device_id'].iloc[0], str(source.device_id))
+
+        # fetch_data should return milliseconds
+        with override_settings(ENCRYPTION_KEY=key):
+            with patch.object(source, 'get_data_types', return_value=['search']):
+                with patch('data_sources.models.google_portability.os.path.exists', return_value=True):
+                    with patch('data_sources.models.google_portability.crypto.decrypt_file_to_temp') as mock_decrypt:
+                        # Write the captured CSV to a real temp file for fetch_data to read
+                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+                        tmp.write(csv_bytes)
+                        tmp.close()
+                        mock_decrypt.return_value = tmp.name
+                        rows = source.fetch_data('search', limit=10)
+                        self.assertEqual(len(rows), 1)
+                        self.assertEqual(int(rows[0]['timestamp']), expected_ms)
 
         # Verify source was marked as processed
         source.refresh_from_db()
