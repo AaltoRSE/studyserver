@@ -470,6 +470,9 @@ class GooglePortabilityDataSource(DataSource):
                             df = reader(tmp_fp)
                             if df is None or df.empty:
                                 continue
+                            # Convert DatetimeIndex to unix milliseconds column
+                            df = df.reset_index()
+                            df['timestamp'] = df['timestamp'].astype('int64') // 10**6
                             df["device_id"] = str(self.device_id)
                             csv_path = self._csv_path(data_type)
                             existing_df = pd.DataFrame()
