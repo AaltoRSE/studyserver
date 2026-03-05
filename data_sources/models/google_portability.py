@@ -131,9 +131,9 @@ class GooglePortabilityDataSource(DataSource):
                 except Exception:
                     pass
             if start_date:
-                df = df[df['timestamp'] >= pd.Timestamp(start_date)]
+                df = df[df['timestamp'] >= pd.Timestamp(start_date, tz='UTC')]
             if end_date:
-                df = df[df['timestamp'] <= pd.Timestamp(end_date)]
+                df = df[df['timestamp'] <= pd.Timestamp(end_date, tz='UTC')]
             df['timestamp'] = df['timestamp'].astype('int64') // 10**6
             start = int(offset) if offset else 0
             end = start + int(limit) if limit is not None else None
@@ -158,9 +158,9 @@ class GooglePortabilityDataSource(DataSource):
                 except Exception:
                     pass
             if start_date:
-                df = df[df['timestamp'] >= pd.Timestamp(start_date)]
+                df = df[df['timestamp'] >= pd.Timestamp(start_date, tz='UTC')]
             if end_date:
-                df = df[df['timestamp'] <= pd.Timestamp(end_date)]
+                df = df[df['timestamp'] <= pd.Timestamp(end_date, tz='UTC')]
             return len(df)
         except Exception as e:
             print(f"Error counting {data_type} data: {e}")
