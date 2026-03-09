@@ -956,3 +956,100 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
         url = reverse('study_data_api', args=[99999])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
+
+    @patch.object(AwareDataSource, 'fetch_data', return_value=[{'timestamp': 123, 'value': 42}])
+    @patch.object(AwareDataSource, 'get_data_types', return_value=['battery'])
+    def test_data_rows_include_participant_id(self, mock_types, mock_fetch):
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='API Test Source',
+            status='active',
+        )
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=source,
+            is_complete=True,
+            consent_date=timezone.now(),
+            study_participant=self.study_participant,
+        )
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api', args=[self.study.id])
+        response = self.client.get(url)
+        data = response.json()
+        self.assertGreater(data['data_count'], 0)
+        for row in data['data']:
+            self.assertEqual(row['participant_id'], str(self.study_participant.pseudo_id))
+
+
+# ---------------------------------------------------------------------------
+# 13. StudyAdminTest
+# ---------------------------------------------------------------------------
+
+class StudyAdminTest(TestCase):
+
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(
+            username='admin', password='testpass', email='admin@example.com',
+        )
+        Profile.objects.create(user=self.superuser, user_type='researcher')
+        self.researcher_user = User.objects.create_user(username='researcher', password='testpass')
+        self.researcher_profile = Profile.objects.create(
+            user=self.researcher_user, user_type='researcher',
+        )
+        self.study = Study.objects.create(
+            title='Admin Study',
+            description='desc',
+            config_url='https://github.com/org/repo',
+        )
+        self.client.login(username='admin', password='testpass')
+
+    def _post_study_change(self, study, researchers):
+        url = reverse('admin:studies_study_change', args=[study.id])
+        return self.client.post(url, {
+            'title': study.title,
+            'description': study.description,
+            'config_url': study.config_url,
+            'researchers': [r.id for r in researchers],
+            'required_data_sources': [],
+            'optional_data_sources': [],
+            'consents-TOTAL_FORMS': '0',
+            'consents-INITIAL_FORMS': '0',
+            'consents-MIN_NUM_FORMS': '0',
+            'consents-MAX_NUM_FORMS': '1000',
+        })
+
+    def test_superuser_can_add_researcher_to_study(self):
+        response = self._post_study_change(self.study, [self.researcher_profile])
+        self.assertEqual(response.status_code, 302)
+        self.study.refresh_from_db()
+        self.assertIn(self.researcher_profile, self.study.researchers.all())
+
+    def test_researcher_in_study_can_add_another_researcher(self):
+        self.researcher_user.is_staff = True
+        self.researcher_user.save()
+        self.study.researchers.add(self.researcher_profile)
+        new_researcher_user = User.objects.create_user(
+            username='new_researcher', password='testpass', is_staff=True,
+        )
+        new_researcher_profile = Profile.objects.create(
+            user=new_researcher_user, user_type='researcher',
+        )
+        self.client.login(username='researcher', password='testpass')
+        response = self._post_study_change(
+            self.study, [self.researcher_profile, new_researcher_profile],
+        )
+        self.assertEqual(response.status_code, 302)
+        self.study.refresh_from_db()
+        self.assertIn(new_researcher_profile, self.study.researchers.all())
+
+    def test_researcher_not_in_study_cannot_access_change_form(self):
+        self.researcher_user.is_staff = True
+        self.researcher_user.save()
+        # researcher_profile is NOT added to study.researchers
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('admin:studies_study_change', args=[self.study.id])
+        response = self.client.get(url)
+        # Django admin returns 302 (redirect to admin index) for objects not in queryset
+        self.assertNotEqual(response.status_code, 200)
