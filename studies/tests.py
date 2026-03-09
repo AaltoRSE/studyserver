@@ -1026,12 +1026,19 @@ class StudyAdminTest(TestCase):
         self.study.refresh_from_db()
         self.assertIn(self.researcher_profile, self.study.researchers.all())
 
+    def _make_staff_researcher(self, user):
+        """Add user to the Researchers group and mark as staff."""
+        from django.contrib.auth.models import Group
+        user.is_staff = True
+        user.save()
+        group, _ = Group.objects.get_or_create(name='Researchers')
+        user.groups.add(group)
+
     def test_researcher_in_study_can_add_another_researcher(self):
-        self.researcher_user.is_staff = True
-        self.researcher_user.save()
+        self._make_staff_researcher(self.researcher_user)
         self.study.researchers.add(self.researcher_profile)
         new_researcher_user = User.objects.create_user(
-            username='new_researcher', password='testpass', is_staff=True,
+            username='new_researcher', password='testpass',
         )
         new_researcher_profile = Profile.objects.create(
             user=new_researcher_user, user_type='researcher',
@@ -1045,8 +1052,7 @@ class StudyAdminTest(TestCase):
         self.assertIn(new_researcher_profile, self.study.researchers.all())
 
     def test_researcher_not_in_study_cannot_access_change_form(self):
-        self.researcher_user.is_staff = True
-        self.researcher_user.save()
+        self._make_staff_researcher(self.researcher_user)
         # researcher_profile is NOT added to study.researchers
         self.client.login(username='researcher', password='testpass')
         url = reverse('admin:studies_study_change', args=[self.study.id])
