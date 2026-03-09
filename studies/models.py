@@ -1,3 +1,4 @@
+import uuid
 from django.apps import apps
 from django.db import models
 from django.db.models.signals import post_save
@@ -94,6 +95,26 @@ class Study(models.Model):
         return self.title
 
 
+class StudyParticipant(models.Model):
+    participant = models.ForeignKey(
+        Profile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='study_participations',
+        limit_choices_to={'user_type': 'participant'}
+    )
+    study = models.ForeignKey(Study, on_delete=models.CASCADE, related_name='participations')
+    pseudo_id = models.UUIDField(default=uuid.uuid4, editable=False)
+
+    class Meta:
+        unique_together = ('participant', 'study')
+
+    def __str__(self):
+        name = self.participant.user.username if self.participant else f"[deleted-{self.pseudo_id}]"
+        return f"{name} in {self.study.title}"
+
+
 class Consent(models.Model):
     participant = models.ForeignKey(
         Profile,
@@ -108,6 +129,13 @@ class Consent(models.Model):
         related_name='consents',
         null=True,
         blank=True
+    )
+    study_participant = models.ForeignKey(
+        StudyParticipant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='consents',
     )
     source_type = models.CharField(max_length=100)
     is_optional = models.BooleanField(default=False)

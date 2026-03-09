@@ -1,14 +1,27 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
-from .models import Study, Consent
+from .models import Study, Consent, StudyParticipant
 from .forms import StudyAdminForm
+
+@admin.register(StudyParticipant)
+class StudyParticipantAdmin(admin.ModelAdmin):
+    list_display = ('study', 'participant_display', 'pseudo_id')
+    readonly_fields = ('pseudo_id',)
+
+    @admin.display(description='Participant')
+    def participant_display(self, obj):
+        if obj.participant:
+            return obj.participant.user.username
+        return f"[deleted-{obj.pseudo_id}]"
+
 
 @admin.register(Consent)
 class ConsentAdmin(admin.ModelAdmin):
     list_display = (
         'study',
         'participant_username',
+        'participant_pseudo_id',
         'source_type',
         'data_source_status',
         'is_complete',
@@ -41,7 +54,13 @@ class ConsentAdmin(admin.ModelAdmin):
     @admin.display(description='Participant')
     def participant_username(self, obj):
         return obj.participant.user.username
-    
+
+    @admin.display(description='Participant ID')
+    def participant_pseudo_id(self, obj):
+        if obj.study_participant:
+            return obj.study_participant.pseudo_id
+        return "-"
+
     @admin.display(description='Source Status')
     def data_source_status(self, obj):
         if not obj.data_source:
@@ -55,6 +74,7 @@ class ConsentInline(admin.TabularInline):
     list_display = ('participant_username', 'consent_date', 'revocation_date', 'is_complete')
     readonly_fields = (
         'participant_username',
+        'participant_pseudo_id',
         'source_type',
         'data_source_info',
         'consent_text_accepted',
@@ -64,6 +84,7 @@ class ConsentInline(admin.TabularInline):
     )
     fields = (
         'participant_username',
+        'participant_pseudo_id',
         'source_type',
         'data_source_info',
         'is_complete',
@@ -74,7 +95,13 @@ class ConsentInline(admin.TabularInline):
     @admin.display(description='Participant')
     def participant_username(self, obj):
         return obj.participant.user.username
-    
+
+    @admin.display(description='Participant ID')
+    def participant_pseudo_id(self, obj):
+        if obj.study_participant:
+            return obj.study_participant.pseudo_id
+        return "-"
+
     @admin.display(description='Data Source')
     def data_source_info(self, obj):
         if not obj.data_source:

@@ -14,9 +14,8 @@ from rest_framework.authtoken.models import Token
 
 from study_server.utils import data_to_csv_response
 from users.models import Profile
-from studies.models import Study, Consent
+from studies.models import Study, Consent, StudyParticipant
 from .forms import CustomUserCreationForm
-from studies.models import Consent
 from studies.views import study_detail
 from data_sources.models import get_display_type_from_source_type
 
@@ -240,9 +239,12 @@ def researcher_dashboard(request):
         participant_profiles = all_consents.values_list('participant', flat=True).distinct()
         for profile_id in participant_profiles:
             profile = Profile.objects.get(id=profile_id)
-            profile = Profile.objects.get(id=profile_id)
             participant_consents = all_consents.filter(participant=profile)
-            
+
+            study_participation = StudyParticipant.objects.filter(
+                participant=profile, study=study
+            ).first()
+
             required_consents = participant_consents.filter(is_optional=False)
             optional_consents = participant_consents.filter(is_optional=True)
 
@@ -264,7 +266,8 @@ def researcher_dashboard(request):
                 'required_total': required_total,
                 'optional_complete': optional_complete,
                 'optional_total': optional_total,
-                'status': status
+                'status': status,
+                'pseudo_id': study_participation.pseudo_id if study_participation else None,
             })
             
         studies_data.append({
@@ -289,7 +292,11 @@ def participant_detail(request, study_id, participant_id):
     if not study.researchers.filter(user=request.user).exists() and not request.user.is_superuser:
         messages.error(request, "You don't have permission to view this participant.")
         return redirect('researcher_dashboard')
-    
+
+    study_participation = StudyParticipant.objects.filter(
+        participant=participant, study=study
+    ).first()
+
     consents = Consent.objects.filter(study=study, participant=participant)
 
     consent_info = []
@@ -318,6 +325,7 @@ def participant_detail(request, study_id, participant_id):
         'study': study,
         'participant': participant,
         'consent_info': consent_info,
+        'pseudo_id': study_participation.pseudo_id if study_participation else None,
     }
 
     return render(request, 'users/participant_detail.html', context)

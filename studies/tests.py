@@ -8,7 +8,7 @@ from django.http import Http404
 from users.models import Profile
 from data_sources.models.aware import AwareDataSource
 from data_sources.models.jsonurl import JsonUrlDataSource
-from .models import Study, Consent
+from .models import Study, Consent, StudyParticipant
 from .views import get_next_consent
 
 
@@ -30,6 +30,10 @@ class StudyTestMixin:
             optional_data_sources=['JsonUrlDataSource'],
         )
         self.study.researchers.add(self.researcher_profile)
+        self.study_participant = StudyParticipant.objects.create(
+            participant=self.profile,
+            study=self.study,
+        )
         self.client.login(username='participant', password='testpass')
 
 
@@ -127,19 +131,76 @@ class ConsentModelTest(TestCase):
             description='desc',
             config_url='https://github.com/org/repo',
         )
+        self.study_participant = StudyParticipant.objects.create(
+            participant=self.profile,
+            study=self.study,
+        )
 
     def test_str_format(self):
         consent = Consent.objects.create(
             participant=self.profile,
             study=self.study,
             source_type='AwareDataSource',
+            study_participant=self.study_participant,
         )
         expected = f"Consent of {self.user.username} for {self.study.title}"
         self.assertEqual(str(consent), expected)
 
 
 # ---------------------------------------------------------------------------
-# 3. JoinStudyViewTest
+# 3. StudyParticipantTest
+# ---------------------------------------------------------------------------
+
+class StudyParticipantTest(TestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='sp_participant', password='testpass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+        self.study = Study.objects.create(
+            title='SP Study',
+            description='desc',
+            config_url='https://github.com/org/repo',
+        )
+
+    def test_str_with_participant(self):
+        sp = StudyParticipant.objects.create(participant=self.profile, study=self.study)
+        self.assertIn(self.user.username, str(sp))
+
+    def test_str_after_profile_deletion(self):
+        sp = StudyParticipant.objects.create(participant=self.profile, study=self.study)
+        pseudo_id = sp.pseudo_id
+        self.profile.delete()
+        sp.refresh_from_db()
+        self.assertIsNone(sp.participant)
+        self.assertEqual(sp.pseudo_id, pseudo_id)
+        self.assertIn('deleted', str(sp))
+
+    def test_unique_per_study(self):
+        StudyParticipant.objects.create(participant=self.profile, study=self.study)
+        with self.assertRaises(Exception):
+            StudyParticipant.objects.create(participant=self.profile, study=self.study)
+
+    def test_different_pseudo_id_per_study(self):
+        study2 = Study.objects.create(
+            title='SP Study 2',
+            description='desc',
+            config_url='https://github.com/org/repo2',
+        )
+        sp1 = StudyParticipant.objects.create(participant=self.profile, study=self.study)
+        sp2 = StudyParticipant.objects.create(participant=self.profile, study=study2)
+        self.assertNotEqual(sp1.pseudo_id, sp2.pseudo_id)
+
+    def test_survives_profile_deletion(self):
+        sp = StudyParticipant.objects.create(participant=self.profile, study=self.study)
+        pseudo_id = sp.pseudo_id
+        self.profile.delete()
+        sp.refresh_from_db()
+        self.assertIsNone(sp.participant)
+        self.assertEqual(sp.pseudo_id, pseudo_id)
+
+
+# ---------------------------------------------------------------------------
+# 4. JoinStudyViewTest
 # ---------------------------------------------------------------------------
 
 class JoinStudyViewTest(StudyTestMixin, TestCase):
@@ -184,9 +245,29 @@ class JoinStudyViewTest(StudyTestMixin, TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
+    def test_creates_study_participant(self):
+        url = reverse('join_study', args=[self.study.id])
+        self.client.get(url)
+        sp = StudyParticipant.objects.filter(
+            participant=self.profile,
+            study=self.study,
+        )
+        self.assertTrue(sp.exists())
+        self.assertIsNotNone(sp.first().pseudo_id)
+
+    def test_consent_has_study_participant(self):
+        url = reverse('join_study', args=[self.study.id])
+        self.client.get(url)
+        consent = Consent.objects.filter(
+            participant=self.profile,
+            study=self.study,
+        ).first()
+        self.assertIsNotNone(consent.study_participant)
+        self.assertIsNotNone(consent.study_participant.pseudo_id)
+
 
 # ---------------------------------------------------------------------------
-# 4. ConsentCheckboxViewTest
+# 5. ConsentCheckboxViewTest
 # ---------------------------------------------------------------------------
 
 class ConsentCheckboxViewTest(StudyTestMixin, TestCase):
@@ -199,6 +280,7 @@ class ConsentCheckboxViewTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=False,
             is_complete=False,
+            study_participant=self.study_participant,
         )
 
     @patch('studies.services.get_consent_template', return_value=MOCK_CONSENT_TEMPLATE)
@@ -299,7 +381,7 @@ class ConsentCheckboxViewTest(StudyTestMixin, TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 5. SelectDataSourceViewTest
+# 6. SelectDataSourceViewTest
 # ---------------------------------------------------------------------------
 
 class SelectDataSourceViewTest(StudyTestMixin, TestCase):
@@ -312,6 +394,7 @@ class SelectDataSourceViewTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=True,
             is_complete=False,
+            study_participant=self.study_participant,
         )
         self.source = AwareDataSource.objects.create(
             profile=self.profile,
@@ -359,7 +442,7 @@ class SelectDataSourceViewTest(StudyTestMixin, TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 6. ConsentWorkflowOrchestratorTest
+# 7. ConsentWorkflowOrchestratorTest
 # ---------------------------------------------------------------------------
 
 class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
@@ -379,6 +462,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=False,
             is_complete=False,
+            study_participant=self.study_participant,
         )
         url = reverse('consent_workflow', args=[self.study.id])
         response = self.client.get(url)
@@ -393,6 +477,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=True,
             is_complete=False,
+            study_participant=self.study_participant,
         )
         url = reverse('consent_workflow', args=[self.study.id])
         response = self.client.get(url)
@@ -407,6 +492,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=True,
             is_complete=False,
+            study_participant=self.study_participant,
         )
         AwareDataSource.objects.create(
             profile=self.profile,
@@ -425,6 +511,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=False,
             is_complete=False,
+            study_participant=self.study_participant,
         )
         second_consent = Consent.objects.create(
             participant=self.profile,
@@ -432,6 +519,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             consent_text_accepted=False,
             is_complete=False,
+            study_participant=self.study_participant,
         )
         url = reverse('consent_workflow', args=[self.study.id])
         response = self.client.get(url, {'consent_id': second_consent.id})
@@ -446,6 +534,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
             consent_text_accepted=False,
             is_complete=False,
             is_optional=True,
+            study_participant=self.study_participant,
         )
         url = reverse('consent_workflow', args=[self.study.id])
         response = self.client.get(url)
@@ -454,7 +543,7 @@ class ConsentWorkflowOrchestratorTest(StudyTestMixin, TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 7. WithdrawFromStudyViewTest
+# 8. WithdrawFromStudyViewTest
 # ---------------------------------------------------------------------------
 
 class WithdrawFromStudyViewTest(StudyTestMixin, TestCase):
@@ -478,6 +567,7 @@ class WithdrawFromStudyViewTest(StudyTestMixin, TestCase):
             data_source=self.source1,
             is_complete=True,
             consent_date=timezone.now(),
+            study_participant=self.study_participant,
         )
         self.consent2 = Consent.objects.create(
             participant=self.profile,
@@ -486,6 +576,7 @@ class WithdrawFromStudyViewTest(StudyTestMixin, TestCase):
             data_source=self.source2,
             is_complete=True,
             consent_date=timezone.now(),
+            study_participant=self.study_participant,
         )
 
     def test_get_renders_confirmation(self):
@@ -513,6 +604,7 @@ class WithdrawFromStudyViewTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             is_complete=False,
             revocation_date=revoked_time,
+            study_participant=self.study_participant,
         )
         url = reverse('withdraw_from_study', args=[self.study.id])
         self.client.post(url)
@@ -538,7 +630,7 @@ class WithdrawFromStudyViewTest(StudyTestMixin, TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 8. RevokeConsentViewTest
+# 9. RevokeConsentViewTest
 # ---------------------------------------------------------------------------
 
 class RevokeConsentViewTest(StudyTestMixin, TestCase):
@@ -558,6 +650,7 @@ class RevokeConsentViewTest(StudyTestMixin, TestCase):
             is_complete=True,
             is_optional=True,
             consent_date=timezone.now(),
+            study_participant=self.study_participant,
         )
 
     def test_get_optional_renders_confirmation(self):
@@ -598,7 +691,7 @@ class RevokeConsentViewTest(StudyTestMixin, TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 9. StudyDetailViewTest
+# 10. StudyDetailViewTest
 # ---------------------------------------------------------------------------
 
 class StudyDetailViewTest(StudyTestMixin, TestCase):
@@ -618,6 +711,7 @@ class StudyDetailViewTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             is_complete=True,
             consent_date=timezone.now(),
+            study_participant=self.study_participant,
         )
         url = reverse('study_detail', args=[self.study.id])
         response = self.client.get(url)
@@ -632,6 +726,7 @@ class StudyDetailViewTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             is_complete=False,
             revocation_date=timezone.now(),
+            study_participant=self.study_participant,
         )
         url = reverse('study_detail', args=[self.study.id])
         response = self.client.get(url)
@@ -645,7 +740,7 @@ class StudyDetailViewTest(StudyTestMixin, TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 10. GetNextConsentHelperTest
+# 11. GetNextConsentHelperTest
 # ---------------------------------------------------------------------------
 
 class GetNextConsentHelperTest(StudyTestMixin, TestCase):
@@ -657,6 +752,7 @@ class GetNextConsentHelperTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             is_complete=False,
             is_optional=False,
+            study_participant=self.study_participant,
         )
         result = get_next_consent(self.profile, self.study, consent_id=consent.id)
         self.assertEqual(result, consent)
@@ -671,6 +767,7 @@ class GetNextConsentHelperTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             is_complete=False,
             is_optional=False,
+            study_participant=self.study_participant,
         )
         consent2 = Consent.objects.create(
             participant=self.profile,
@@ -678,6 +775,7 @@ class GetNextConsentHelperTest(StudyTestMixin, TestCase):
             source_type='AwareDataSource',
             is_complete=False,
             is_optional=False,
+            study_participant=self.study_participant,
         )
         result = get_next_consent(self.profile, self.study)
         self.assertIsNotNone(result)
@@ -691,6 +789,7 @@ class GetNextConsentHelperTest(StudyTestMixin, TestCase):
             is_complete=True,
             is_optional=False,
             consent_date=timezone.now(),
+            study_participant=self.study_participant,
         )
         result = get_next_consent(self.profile, self.study)
         self.assertIsNone(result)
@@ -702,6 +801,7 @@ class GetNextConsentHelperTest(StudyTestMixin, TestCase):
             source_type='JsonUrlDataSource',
             is_complete=False,
             is_optional=True,
+            study_participant=self.study_participant,
         )
         result = get_next_consent(self.profile, self.study)
         self.assertIsNone(result)
@@ -714,13 +814,14 @@ class GetNextConsentHelperTest(StudyTestMixin, TestCase):
             is_complete=False,
             is_optional=False,
             revocation_date=timezone.now(),
+            study_participant=self.study_participant,
         )
         result = get_next_consent(self.profile, self.study)
         self.assertIsNone(result)
 
 
 # ---------------------------------------------------------------------------
-# 11. StudyDataApiTest
+# 12. StudyDataApiTest
 # ---------------------------------------------------------------------------
 
 class StudyDataApiTest(StudyTestMixin, TestCase):

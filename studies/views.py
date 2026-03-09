@@ -17,8 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from study_server.utils import data_to_csv_response
 import base64
-from data_sources.models import DataSource
-from .models import Study, Consent
+from .models import Study, Consent, StudyParticipant
 from .forms import ConsentAcceptanceForm, DataSourceSelectionForm
 from . import services
 
@@ -29,11 +28,17 @@ def join_study(request, study_id):
     study = get_object_or_404(Study, pk=study_id)
     profile = request.user.profile
 
+    study_participant, _ = StudyParticipant.objects.get_or_create(
+        participant=profile,
+        study=study,
+    )
+
     for required_type in study.required_data_sources:
         Consent.objects.create(
             participant=profile,
             study=study,
             source_type=required_type,
+            study_participant=study_participant,
         )
 
     for optional_type in study.optional_data_sources:
@@ -41,7 +46,8 @@ def join_study(request, study_id):
             participant=profile,
             study=study,
             source_type=optional_type,
-            is_optional=True
+            is_optional=True,
+            study_participant=study_participant,
         )
         
     messages.info(request, f"You have started the enrollment process for '{study.title}'. Please complete the required steps.")
@@ -90,7 +96,8 @@ def revoke_consent(request, consent_id):
             participant=profile,
             study=study,
             source_type=consent.source_type,
-            is_optional=True
+            is_optional=True,
+            study_participant=consent.study_participant,
         )
         messages.success(request, f"You have revoked consent for {consent.source_type} in '{study.title}'.")
         return redirect('dashboard')
@@ -288,7 +295,7 @@ def study_data_api(request, study_id):
         is_complete=True,
         revocation_date__isnull=True,
         data_source__status='active'
-    ).select_related('data_source')
+    ).select_related('data_source', 'study_participant')
 
     all_data = []
     all_data_types = set()
@@ -326,6 +333,7 @@ def study_data_api(request, study_id):
             for row in data:
                 row["data_type"] = dt
                 row["source_type"] = consent.source_type
+                row["participant_id"] = str(consent.study_participant.pseudo_id) if consent.study_participant else None
                 all_data.append(_clean_row(row))
 
     if output_format == 'csv':
