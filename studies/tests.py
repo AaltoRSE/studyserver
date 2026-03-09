@@ -148,6 +148,99 @@ class ConsentModelTest(TestCase):
 
 
 # ---------------------------------------------------------------------------
+# 2b. ConsentProfileDeletionTest
+# ---------------------------------------------------------------------------
+
+class ConsentProfileDeletionTest(TestCase):
+    """Verify that deleting a participant profile does not destroy consent records."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='deletion_test', password='testpass')
+        self.profile = Profile.objects.create(user=self.user, user_type='participant')
+        self.study = Study.objects.create(
+            title='Deletion Study',
+            description='desc',
+            config_url='https://github.com/org/repo',
+        )
+        self.study_participant = StudyParticipant.objects.create(
+            participant=self.profile,
+            study=self.study,
+        )
+        self.consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            study_participant=self.study_participant,
+            is_complete=True,
+            consent_text_accepted=True,
+            consent_date=timezone.now(),
+        )
+
+    def test_consent_survives_profile_deletion(self):
+        consent_pk = self.consent.pk
+        self.profile.delete()
+        self.assertTrue(Consent.objects.filter(pk=consent_pk).exists())
+
+    def test_participant_field_set_to_null(self):
+        self.profile.delete()
+        self.consent.refresh_from_db()
+        self.assertIsNone(self.consent.participant)
+
+    def test_study_participant_link_preserved(self):
+        pseudo_id = self.study_participant.pseudo_id
+        self.profile.delete()
+        self.consent.refresh_from_db()
+        self.assertIsNotNone(self.consent.study_participant)
+        self.assertEqual(self.consent.study_participant.pseudo_id, pseudo_id)
+
+    def test_consent_fields_unchanged_after_deletion(self):
+        consent_date = self.consent.consent_date
+        self.profile.delete()
+        self.consent.refresh_from_db()
+        self.assertTrue(self.consent.is_complete)
+        self.assertTrue(self.consent.consent_text_accepted)
+        self.assertEqual(self.consent.source_type, 'AwareDataSource')
+        self.assertEqual(
+            self.consent.consent_date.replace(microsecond=0),
+            consent_date.replace(microsecond=0),
+        )
+
+    def test_str_after_profile_deletion(self):
+        pseudo_id = self.study_participant.pseudo_id
+        self.profile.delete()
+        self.consent.refresh_from_db()
+        result = str(self.consent)
+        self.assertIn('deleted', result)
+        self.assertIn(str(pseudo_id), result)
+
+    def test_multiple_consents_across_studies_survive(self):
+        study2 = Study.objects.create(
+            title='Second Study', description='desc',
+            config_url='https://github.com/org/repo2',
+        )
+        sp2 = StudyParticipant.objects.create(
+            participant=self.profile, study=study2,
+        )
+        consent2 = Consent.objects.create(
+            participant=self.profile,
+            study=study2,
+            source_type='JsonUrlDataSource',
+            study_participant=sp2,
+        )
+        self.profile.delete()
+        self.consent.refresh_from_db()
+        consent2.refresh_from_db()
+        self.assertIsNone(self.consent.participant)
+        self.assertIsNone(consent2.participant)
+        self.assertIsNotNone(self.consent.study_participant)
+        self.assertIsNotNone(consent2.study_participant)
+        self.assertNotEqual(
+            self.consent.study_participant.pseudo_id,
+            consent2.study_participant.pseudo_id,
+        )
+
+
+# ---------------------------------------------------------------------------
 # 3. StudyParticipantTest
 # ---------------------------------------------------------------------------
 

@@ -118,7 +118,9 @@ class StudyParticipant(models.Model):
 class Consent(models.Model):
     participant = models.ForeignKey(
         Profile,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='consents',
         limit_choices_to={'user_type': 'participant'}
     )
@@ -149,6 +151,12 @@ class Consent(models.Model):
     revocation_date = models.DateTimeField(null=True, blank=True)
     
     def __str__(self):
-        return f"Consent of {self.participant.user.username} for {self.study.title}"
+        if self.participant:
+            name = self.participant.user.username
+        elif self.study_participant:
+            name = f"[deleted-{self.study_participant.pseudo_id}]"
+        else:
+            name = "[deleted]"
+        return f"Consent of {name} for {self.study.title}"
 
 
