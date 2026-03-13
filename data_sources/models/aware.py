@@ -114,14 +114,18 @@ class AwareDataSource(DataSource):
                 revocation_date__isnull=True
             )
             studies = [consent.study for consent in active_consents]
+            study = studies[0] if studies else None
+            name_parts = (study.contact_name.rsplit(' ', 1) if study and study.contact_name else ['', ''])
+            researcher_first = name_parts[0]
+            researcher_last = name_parts[1] if len(name_parts) > 1 else ''
             config_json = {
-                "_id": "PolAlpha",
+                "_id": study.title if study else "",
                 "study_info": {
-                    "study_title": "Polalpha",
-                    "study_description": "Alpha study for POLWELL and POLEMIC",
-                    "researcher_first": "Jarno",
-                    "researcher_last": "Rantaharju",
-                    "researcher_contact": "<jarno.rantaharju@aalto.fi>"
+                    "study_title": study.title if study else "",
+                    "study_description": study.description if study else "",
+                    "researcher_first": researcher_first,
+                    "researcher_last": researcher_last,
+                    "researcher_contact": study.contact_email if study else "",
                 },
                 "database": {
                     "rootPassword": "-",
@@ -175,12 +179,16 @@ class AwareDataSource(DataSource):
             if not consent:
                 return JsonResponse({"error": "No active consent found."}, status=404)
                 
+            study = consent.study
+            name_parts = (study.contact_name.rsplit(' ', 1) if study.contact_name else ['', ''])
+            researcher_first = name_parts[0]
+            researcher_last = name_parts[1] if len(name_parts) > 1 else ''
             study_info = {
-                    "study_title": "Polalpha",
-                    "study_description": "Alpha study for POLWELL and POLEMIC",
-                    "researcher_first": "Jarno",
-                    "researcher_last": "Rantaharju",
-                    "researcher_contact": "<jarno.rantaharju@aalto.fi>"
+                    "study_title": study.title,
+                    "study_description": study.description,
+                    "researcher_first": researcher_first,
+                    "researcher_last": researcher_last,
+                    "researcher_contact": study.contact_email,
                 }
             return JsonResponse(study_info)
             

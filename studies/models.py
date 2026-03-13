@@ -48,6 +48,18 @@ class Study(models.Model):
         help_text="Domain name of the study's landing page"
     )
 
+    contact_name = models.CharField(
+        max_length=200,
+        blank=True,
+        default='',
+        help_text="Name of the contact person for this study"
+    )
+    contact_email = models.EmailField(
+        blank=True,
+        default='',
+        help_text="Email of the contact person for this study"
+    )
+
     config_url = models.URLField(max_length=500, help_text="URL for fetching study configuration")
     source_configurations = models.JSONField(
         default=dict,
