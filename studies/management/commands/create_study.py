@@ -1,7 +1,12 @@
-"""Management command to create the study for this deployment."""
+"""Management command to set up a new deployment: create a superuser and study."""
+import getpass
+
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
+
 from data_sources.models import DataSource
 from studies.models import Study
+from users.models import Profile
 
 
 def get_available_source_types():
@@ -9,7 +14,7 @@ def get_available_source_types():
 
 
 class Command(BaseCommand):
-    help = 'Create the study for this deployment. Only one study is allowed per deployment.'
+    help = 'Set up a new deployment by creating a superuser and study.'
 
     def handle(self, *args, **options):
         if Study.objects.exists():
@@ -17,6 +22,29 @@ class Command(BaseCommand):
                 'A study already exists. Only one study per deployment is allowed.'
             )
 
+        # --- Superuser ---
+        if not User.objects.filter(is_superuser=True).exists():
+            self.stdout.write('\n=== Create Superuser ===\n')
+
+            username = input('Admin username: ')
+            email = input('Admin email: ')
+            while True:
+                password = getpass.getpass('Admin password: ')
+                password2 = getpass.getpass('Confirm password: ')
+                if password == password2:
+                    break
+                self.stderr.write('Passwords do not match. Try again.\n')
+
+            User.objects.create_superuser(
+                username=username,
+                email=email,
+                password=password,
+            )
+            self.stdout.write(self.style.SUCCESS(f'Superuser "{username}" created.\n'))
+        else:
+            self.stdout.write('Superuser already exists, skipping.\n')
+
+        # --- Study ---
         source_types = get_available_source_types()
 
         self.stdout.write('\n=== Create Study ===\n')
@@ -54,4 +82,5 @@ class Command(BaseCommand):
             optional_data_sources=optional_data_sources,
         )
 
-        self.stdout.write(self.style.SUCCESS(f'\nStudy "{study.title}" created (id={study.id}).'))
+        self.stdout.write(self.style.SUCCESS(f'\nStudy "{study.title}" created (id={study.id}).\n'))
+        self.stdout.write('Deployment setup complete. Add researchers via the admin UI.')
