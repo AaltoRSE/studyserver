@@ -66,6 +66,23 @@ class StudyModelTest(TestCase):
         self.study.save()
         self.assertEqual(self.study.raw_content_base_url, 'https://example.com/config')
 
+    def test_raw_content_base_url_gitlab(self):
+        self.study.config_url = 'https://gitlab.com/org/repo'
+        self.study.save()
+        self.assertEqual(
+            self.study.raw_content_base_url,
+            'https://gitlab.com/org/repo/-/raw/main/'
+        )
+
+    def test_raw_content_base_url_custom_branch(self):
+        self.study.config_url = 'https://gitlab.com/org/repo'
+        self.study.repo_branch = 'develop'
+        self.study.save()
+        self.assertEqual(
+            self.study.raw_content_base_url,
+            'https://gitlab.com/org/repo/-/raw/develop/'
+        )
+
     def test_raw_content_base_url_empty(self):
         self.study.config_url = ''
         self.study.save()

@@ -61,6 +61,12 @@ class Study(models.Model):
     )
 
     config_url = models.URLField(max_length=500, help_text="URL for fetching study configuration")
+    repo_branch = models.CharField(
+        max_length=100,
+        default='main',
+        blank=True,
+        help_text="Branch name in the config repository (default: main)"
+    )
     source_configurations = models.JSONField(
         default=dict,
         blank=True,
@@ -73,7 +79,7 @@ class Study(models.Model):
         if not self.config_url:
             return None
         if 'github.com' in self.config_url:
-            return self.config_url.replace('github.com', 'raw.githubusercontent.com') + '/main/'
+            return self.config_url.replace('github.com', 'raw.githubusercontent.com') + f'/{self.repo_branch}/'
         if 'gitlab.com' in self.config_url:
             return f"{self.config_url}/-/raw/{self.repo_branch}/"
 

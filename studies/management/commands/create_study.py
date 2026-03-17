@@ -26,6 +26,7 @@ class Command(BaseCommand):
         contact_name = input('Contact person name: ')
         contact_email = input('Contact person email: ')
         config_url = input('Configuration repository URL: ')
+        repo_branch = input('Config repo branch (default: main): ').strip() or 'main'
 
         self.stdout.write(f'\nAvailable data source types: {", ".join(source_types)}')
         self.stdout.write('Enter comma-separated type names, or leave blank to skip.\n')
@@ -48,6 +49,7 @@ class Command(BaseCommand):
             contact_name=contact_name,
             contact_email=contact_email,
             config_url=config_url,
+            repo_branch=repo_branch,
             required_data_sources=required_data_sources,
             optional_data_sources=optional_data_sources,
         )
