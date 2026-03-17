@@ -37,12 +37,10 @@ def login_view(request):
     
     
 def home(request):
-    host = request.get_host().split(':')[0]
-    try:
-        study = Study.objects.get(domain=host)
-    except Study.DoesNotExist:
+    study = Study.objects.first()
+    if study is None:
         return render(request, 'home.html')
-    
+
     if request.user.is_authenticated:
         user_in_study = Consent.objects.filter(
             study=study,
@@ -50,9 +48,8 @@ def home(request):
             revocation_date__isnull=True
         ).exists()
         if user_in_study:
-            print("User is in study")
             return redirect('dashboard')
-    
+
     return study_detail(request, study_id=study.id)
 
 

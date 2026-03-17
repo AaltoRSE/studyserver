@@ -58,7 +58,6 @@ class HomeViewTest(TestCase):
         self.study = Study.objects.create(
             title='Test Study',
             description='A test study',
-            domain="testserver",
             config_url="test_url"
         )
         self.user = User.objects.create_user(username='testuser', password='testpass')
@@ -286,15 +285,13 @@ class HomeViewExtendedTest(BaseTestCase):
         self.study = Study.objects.create(
             title='Domain Study',
             description='A study',
-            domain='testserver',
             config_url='test_url'
         )
         self.user = User.objects.create_user(username='homeuser', password='pass')
         self.profile = Profile.objects.create(user=self.user, user_type='participant')
 
-    def test_home_no_matching_domain(self):
-        self.study.domain = 'other.example.com'
-        self.study.save()
+    def test_home_no_study_shows_home(self):
+        self.study.delete()
         response = self.client.get('/')
         self.assertEqual(response.status_code, 200)
 

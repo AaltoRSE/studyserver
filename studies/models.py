@@ -40,14 +40,6 @@ class Study(models.Model):
         help_text="List of optional source types, e.g., ['JsonUrlDataSource']"
     )
 
-    domain = models.CharField(
-        max_length=200,
-        unique=True,
-        null=True,
-        blank=True,
-        help_text="Domain name of the study's landing page"
-    )
-
     contact_name = models.CharField(
         max_length=200,
         blank=True,
