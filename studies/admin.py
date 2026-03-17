@@ -140,6 +140,12 @@ class StudyAdmin(admin.ModelAdmin):
         form.base_fields['researchers'].widget.can_delete_related = False
         return form
     
+    def has_add_permission(self, request):
+        # Enforce single study per deployment
+        if Study.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         if not change:
