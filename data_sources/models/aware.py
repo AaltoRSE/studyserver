@@ -147,7 +147,8 @@ class AwareDataSource(DataSource):
                 ]
             }
             for study in studies:
-                config_filename = study.source_configurations.get('AwareDataSource', "aware_config.json")
+                source_config = study.source_configurations.get('AwareDataSource', {})
+                config_filename = source_config.get('config_file', 'aware_config.json') if isinstance(source_config, dict) else 'aware_config.json'
                 base_url = study.raw_content_base_url
                 if not base_url:
                     continue

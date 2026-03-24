@@ -27,8 +27,10 @@ class StudyTestMixin:
             title='Test Study',
             description='A test study',
             config_url='https://github.com/example/study-repo',
-            required_data_sources=['AwareDataSource'],
-            optional_data_sources=['JsonUrlDataSource'],
+            source_configurations={
+                'AwareDataSource': {'status': 'required'},
+                'JsonUrlDataSource': {'status': 'optional'},
+            },
         )
         self.study.researchers.add(self.researcher_profile)
         self.study_participant = StudyParticipant.objects.create(
@@ -89,50 +91,27 @@ class StudyModelTest(TestCase):
         self.study.save()
         self.assertIsNone(self.study.raw_content_base_url)
 
-    def test_get_data_type_dates_with_config(self):
+    def test_get_source_dates(self):
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {
-                    'data_start': '2024-01-01T00:00:00',
-                    'data_end': '2024-12-31T00:00:00',
-                }
+                'status': 'required',
+                'data_start': '2024-01-01T00:00:00',
+                'data_end': '2024-12-31T00:00:00',
             }
         }
         self.study.save()
-        start, end = self.study.get_data_type_dates('AwareDataSource', 'battery')
-        self.assertIsNotNone(start)
-        self.assertIsNotNone(end)
+        start, end = self.study.get_source_dates('AwareDataSource')
         self.assertEqual(start.year, 2024)
         self.assertEqual(start.month, 1)
         self.assertEqual(end.year, 2024)
         self.assertEqual(end.month, 12)
 
-    def test_get_data_type_dates_missing_source_type(self):
+    def test_get_source_dates_missing_source_type(self):
         self.study.source_configurations = {}
         self.study.save()
-        start, end = self.study.get_data_type_dates('AwareDataSource', 'battery')
+        start, end = self.study.get_source_dates('AwareDataSource')
         self.assertIsNone(start)
         self.assertIsNone(end)
-
-    def test_get_earliest_data_start(self):
-        self.study.source_configurations = {
-            'AwareDataSource': {
-                'battery': {'data_start': '2024-06-01T00:00:00'},
-                'screen': {'data_start': '2024-01-01T00:00:00'},
-                'locations': {'data_start': '2024-03-01T00:00:00'},
-            }
-        }
-        self.study.save()
-        earliest = self.study.get_earliest_data_start('AwareDataSource')
-        self.assertIsNotNone(earliest)
-        self.assertEqual(earliest.month, 1)
-        self.assertEqual(earliest.day, 1)
-
-    def test_get_earliest_data_start_no_config(self):
-        self.study.source_configurations = {}
-        self.study.save()
-        result = self.study.get_earliest_data_start('AwareDataSource')
-        self.assertIsNone(result)
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +424,8 @@ class ConsentCheckboxViewTest(StudyTestMixin, TestCase):
     def test_post_data_start_from_config(self, mock_template):
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {'data_start': '2024-01-01T00:00:00'},
+                'status': 'required',
+                'data_start': '2024-01-01T00:00:00',
             }
         }
         self.study.save()
@@ -1007,9 +987,8 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
         # Config data_start (June 1) is later than consent_date (Jan 1), so fetch should use June 1
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {
-                    'data_start': '2024-06-01T00:00:00',
-                }
+                'status': 'required',
+                'data_start': '2024-06-01T00:00:00',
             }
         }
         self.study.save()
@@ -1041,9 +1020,8 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
         # Config data_end (Sep 1) should cap the end date passed to fetch_data
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {
-                    'data_end': '2024-09-01T00:00:00',
-                }
+                'status': 'required',
+                'data_end': '2024-09-01T00:00:00',
             }
         }
         self.study.save()
@@ -1075,9 +1053,8 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
         # Changing the config's data_start should be reflected in subsequent API calls
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {
-                    'data_start': '2024-06-01T00:00:00',
-                }
+                'status': 'required',
+                'data_start': '2024-06-01T00:00:00',
             }
         }
         self.study.save()
@@ -1105,9 +1082,8 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
 
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {
-                    'data_start': '2024-08-01T00:00:00',
-                }
+                'status': 'required',
+                'data_start': '2024-08-01T00:00:00',
             }
         }
         self.study.save()
@@ -1123,10 +1099,9 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
         # so fetch_data should receive the narrower query-param window
         self.study.source_configurations = {
             'AwareDataSource': {
-                'battery': {
-                    'data_start': '2024-01-01T00:00:00',
-                    'data_end': '2024-12-31T00:00:00',
-                }
+                'status': 'required',
+                'data_start': '2024-01-01T00:00:00',
+                'data_end': '2024-12-31T00:00:00',
             }
         }
         self.study.save()
@@ -1204,14 +1179,14 @@ class StudyAdminTest(TestCase):
         self.client.login(username='admin', password='testpass')
 
     def _post_study_change(self, study, researchers):
+        import json
         url = reverse('admin:studies_study_change', args=[study.id])
         return self.client.post(url, {
             'title': study.title,
             'description': study.description,
             'config_url': study.config_url,
             'researchers': [r.id for r in researchers],
-            'required_data_sources': [],
-            'optional_data_sources': [],
+            'source_configurations': json.dumps(study.source_configurations),
             'consents-TOTAL_FORMS': '0',
             'consents-INITIAL_FORMS': '0',
             'consents-MIN_NUM_FORMS': '0',

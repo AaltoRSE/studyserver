@@ -29,17 +29,6 @@ class Study(models.Model):
         related_name='studies',
         limit_choices_to={'user_type': 'researcher'},
     )
-    required_data_sources = models.JSONField(
-        default=list, 
-        blank=True,
-        help_text="List of required source types, e.g., ['AwareDataSource']"
-    )
-    optional_data_sources = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="List of optional source types, e.g., ['JsonUrlDataSource']"
-    )
-
     contact_name = models.CharField(
         max_length=200,
         blank=True,
@@ -62,8 +51,23 @@ class Study(models.Model):
     source_configurations = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Mapping of source configuration files for the study"
+        help_text=(
+            "Dict mapping source type names to their configuration. "
+            "Each entry should have at minimum a 'status' key ('required' or 'optional'). "
+            "Optional keys: 'data_start', 'data_end' (ISO datetime strings), 'config_file'. "
+            "Example: {\"AwareDataSource\": {\"status\": \"required\", \"data_start\": \"2024-01-01T00:00:00\"}}"
+        )
     )
+
+    @property
+    def required_data_sources(self):
+        return [k for k, v in self.source_configurations.items()
+                if isinstance(v, dict) and v.get('status') == 'required']
+
+    @property
+    def optional_data_sources(self):
+        return [k for k, v in self.source_configurations.items()
+                if isinstance(v, dict) and v.get('status') == 'optional']
 
     @property
     def raw_content_base_url(self):
@@ -78,28 +82,15 @@ class Study(models.Model):
         # raw urls also should work directly
         return self.config_url
 
-    def get_data_type_dates(self, source_type, data_type):
-        """Return (data_start, data_end) datetimes for a data type from source_configurations."""
-        config = self.source_configurations.get(source_type)
+    def get_source_dates(self, source_type):
+        """Return (data_start, data_end) for a source type from source_configurations."""
+        config = self.source_configurations.get(source_type, {})
         if not isinstance(config, dict):
             return None, None
-        type_config = config.get(data_type, {})
         return (
-            _parse_config_date(type_config.get('data_start')),
-            _parse_config_date(type_config.get('data_end')),
+            _parse_config_date(config.get('data_start')),
+            _parse_config_date(config.get('data_end')),
         )
-
-    def get_earliest_data_start(self, source_type):
-        """Return the earliest configured data_start across all data types, or None."""
-        config = self.source_configurations.get(source_type)
-        if not isinstance(config, dict):
-            return None
-        starts = [
-            _parse_config_date(v.get('data_start'))
-            for v in config.values() if isinstance(v, dict)
-        ]
-        starts = [s for s in starts if s is not None]
-        return min(starts) if starts else None
 
     def __str__(self):
         return self.title

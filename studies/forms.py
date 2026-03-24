@@ -13,21 +13,9 @@ def get_data_source_type_choices():
 
 
 class StudyAdminForm(forms.ModelForm):
-    required_data_sources = forms.MultipleChoiceField(
-        choices=get_data_source_type_choices,
-        widget=forms.CheckboxSelectMultiple,
-        required=False
-    )
-    optional_data_sources = forms.MultipleChoiceField(
-        choices=get_data_source_type_choices,
-        widget=forms.CheckboxSelectMultiple,
-        required=False
-    )
-
     class Meta:
         model = Study
         fields = '__all__'
-        exclude = ('source_configurations',)
 
     def __init__(self, *args, **kwargs):
         self.request = kwargs.pop('request', None)
@@ -36,8 +24,6 @@ class StudyAdminForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         researchers = cleaned_data.get('researchers')
-        
-        # This check only applies when a non-superuser is editing an existing study
         if self.instance.pk and not self.user.is_superuser:
             if researchers is None:
                 raise forms.ValidationError("Researchers field cannot be empty.")
@@ -46,7 +32,7 @@ class StudyAdminForm(forms.ModelForm):
                     "You cannot remove yourself from the list of researchers."
                 )
             return cleaned_data
-        
+
 
 class ConsentAcceptanceForm(forms.Form):
     accept_consent = forms.BooleanField(required=True, label="I consent")

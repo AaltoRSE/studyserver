@@ -59,17 +59,18 @@ class Command(BaseCommand):
         self.stdout.write(f'\nAvailable data source types: {", ".join(source_types)}')
         self.stdout.write('Enter comma-separated type names, or leave blank to skip.\n')
 
+        source_configurations = {}
         required_input = input('Required data sources: ')
-        required_data_sources = [s.strip() for s in required_input.split(',') if s.strip()]
-        for name in required_data_sources:
+        for name in [s.strip() for s in required_input.split(',') if s.strip()]:
             if name not in source_types:
                 raise CommandError(f'Unknown data source type: {name}')
+            source_configurations[name] = {'status': 'required'}
 
         optional_input = input('Optional data sources: ')
-        optional_data_sources = [s.strip() for s in optional_input.split(',') if s.strip()]
-        for name in optional_data_sources:
+        for name in [s.strip() for s in optional_input.split(',') if s.strip()]:
             if name not in source_types:
                 raise CommandError(f'Unknown data source type: {name}')
+            source_configurations[name] = {'status': 'optional'}
 
         study = Study.objects.create(
             title=title,
@@ -78,8 +79,7 @@ class Command(BaseCommand):
             contact_email=contact_email,
             config_url=config_url,
             repo_branch=repo_branch,
-            required_data_sources=required_data_sources,
-            optional_data_sources=optional_data_sources,
+            source_configurations=source_configurations,
         )
 
         self.stdout.write(self.style.SUCCESS(f'\nStudy "{study.title}" created (id={study.id}).\n'))
