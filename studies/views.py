@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.template import engines
@@ -275,21 +276,17 @@ def _make_timezone_aware(dt):
 @api_view(['GET'])
 @authentication_classes([TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
-def study_data_api(request, study_id):
-    study = get_object_or_404(Study, id=study_id)
+def study_data_api(request):
+    study = Study.objects.first()
+    if study is None:
+        return JsonResponse({'error': 'No study configured'}, status=404)
 
     if not request.user.is_superuser:
         if not study.researchers.filter(user=request.user).exists():
             return JsonResponse({'error': 'Unauthorized'}, status=403)
 
     data_type = request.GET.get('data_type')
-    start_date_param = request.GET.get('start_date')
-    end_date_param = request.GET.get('end_date')
-    output_format = request.GET.get('format', 'json')
 
-    start_date = _parse_date(start_date_param)
-    end_date = _parse_date(end_date_param)
-    
     active_consents = Consent.objects.filter(
         study=study,
         is_complete=True,
@@ -297,17 +294,36 @@ def study_data_api(request, study_id):
         data_source__status='active'
     ).select_related('data_source', 'study_participant')
 
-    all_data = []
+    # Collect all available data types across consents
     all_data_types = set()
+    for consent in active_consents:
+        if not consent.data_source:
+            continue
+        source = consent.data_source.get_real_instance()
+        all_data_types.update(source.get_data_types())
+
+    if not data_type:
+        return JsonResponse({
+            'study': study.title,
+            'data_types': sorted(all_data_types),
+        })
+
+    start_date_param = request.GET.get('start_date')
+    end_date_param = request.GET.get('end_date')
+    output_format = request.GET.get('format', 'json')
+
+    start_date = _parse_date(start_date_param)
+    end_date = _parse_date(end_date_param)
+
+    all_data = []
     for consent in active_consents:
         if not consent.data_source:
             continue
         source = consent.data_source.get_real_instance()
         data_types = source.get_data_types()
 
-        all_data_types.update(data_types)
-        if data_type:
-            data_types = [data_type] if data_type in data_types else []
+        if data_type not in data_types:
+            continue
 
         consent_start = consent.data_start or consent.consent_date
         if not consent_start:
@@ -315,26 +331,25 @@ def study_data_api(request, study_id):
 
         consent_end = consent.revocation_date or timezone.now()
 
-        for dt in data_types:
-            type_start, type_end = study.get_data_type_dates(consent.source_type, dt)
+        type_start, type_end = study.get_data_type_dates(consent.source_type, data_type)
 
-            effective_start = type_start or consent_start
-            start_candidates = [_make_timezone_aware(d) for d in [effective_start, start_date] if d is not None]
-            interval_start = max(start_candidates) if start_candidates else None
+        effective_start = type_start or consent_start
+        start_candidates = [_make_timezone_aware(d) for d in [effective_start, start_date] if d is not None]
+        interval_start = max(start_candidates) if start_candidates else None
 
-            end_candidates = [_make_timezone_aware(d) for d in [type_end, consent_end, end_date] if d is not None]
-            interval_end = min(end_candidates) if end_candidates else None
+        end_candidates = [_make_timezone_aware(d) for d in [type_end, consent_end, end_date] if d is not None]
+        interval_end = min(end_candidates) if end_candidates else None
 
-            data = source.fetch_data(
-                data_type=dt,
-                start_date=interval_start,
-                end_date=interval_end
-            )
-            for row in data:
-                row["data_type"] = dt
-                row["source_type"] = consent.source_type
-                row["participant_id"] = str(consent.study_participant.pseudo_id) if consent.study_participant else None
-                all_data.append(_clean_row(row))
+        data = source.fetch_data(
+            data_type=data_type,
+            start_date=interval_start,
+            end_date=interval_end
+        )
+        for row in data:
+            row["data_type"] = data_type
+            row["source_type"] = consent.source_type
+            row["participant_id"] = str(consent.study_participant.pseudo_id) if consent.study_participant else None
+            all_data.append(_clean_row(row))
 
     if output_format == 'csv':
         return data_to_csv_response(all_data, "study_data.csv")
@@ -342,7 +357,7 @@ def study_data_api(request, study_id):
         return JsonResponse({
             'study': study.title,
             'data_count': len(all_data),
-            'data_types': list(all_data_types),
+            'data_types': [data_type],
             'data': all_data
         })
     

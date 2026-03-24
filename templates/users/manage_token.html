@@ -22,7 +22,7 @@
 
 <h3>Fetch Study Data</h3>
 <pre>curl -H "Authorization: Token {{ token.key }}" \
-  {{ request.scheme }}://{{ request.get_host }}/studies/api/STUDY_ID/data/?data_type=battery</pre>
+  {{ request.scheme }}://{{ request.get_host }}/studies/api/data/?data_type=battery</pre>
 {% else %}
 <pre>curl -H "Authorization: Token {{ token.key }}" \
   {{ request.scheme }}://{{ request.get_host }}/accounts/api/data/?data_type=battery</pre>

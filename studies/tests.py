@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
@@ -938,13 +939,13 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
 
     def test_unauthorized_user_403(self):
         # participant (not researcher) should get 403
-        url = reverse('study_data_api', args=[self.study.id])
+        url = reverse('study_data_api')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 403)
 
     def test_researcher_can_access(self):
         self.client.login(username='researcher', password='testpass')
-        url = reverse('study_data_api', args=[self.study.id])
+        url = reverse('study_data_api')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
@@ -953,24 +954,25 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
             username='superadmin', password='testpass', email='admin@example.com'
         )
         self.client.login(username='superadmin', password='testpass')
-        url = reverse('study_data_api', args=[self.study.id])
+        url = reverse('study_data_api')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-    def test_returns_json_format(self):
+    def test_returns_data_types_when_no_type_specified(self):
         self.client.login(username='researcher', password='testpass')
-        url = reverse('study_data_api', args=[self.study.id])
+        url = reverse('study_data_api')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn('study', data)
-        self.assertIn('data_count', data)
         self.assertIn('data_types', data)
-        self.assertIn('data', data)
+        self.assertNotIn('data', data)
+        self.assertNotIn('data_count', data)
 
-    def test_nonexistent_study_404(self):
+    def test_no_study_returns_404(self):
+        Study.objects.all().delete()
         self.client.login(username='researcher', password='testpass')
-        url = reverse('study_data_api', args=[99999])
+        url = reverse('study_data_api')
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
@@ -992,12 +994,191 @@ class StudyDataApiTest(StudyTestMixin, TestCase):
             study_participant=self.study_participant,
         )
         self.client.login(username='researcher', password='testpass')
-        url = reverse('study_data_api', args=[self.study.id])
-        response = self.client.get(url)
+        url = reverse('study_data_api')
+        response = self.client.get(url, {'data_type': 'battery'})
         data = response.json()
         self.assertGreater(data['data_count'], 0)
         for row in data['data']:
             self.assertEqual(row['participant_id'], str(self.study_participant.pseudo_id))
+
+    @patch.object(AwareDataSource, 'fetch_data', return_value=[{'timestamp': 123, 'value': 42}])
+    @patch.object(AwareDataSource, 'get_data_types', return_value=['battery'])
+    def test_config_data_start_limits_fetched_data(self, mock_types, mock_fetch):
+        # Config data_start (June 1) is later than consent_date (Jan 1), so fetch should use June 1
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {
+                    'data_start': '2024-06-01T00:00:00',
+                }
+            }
+        }
+        self.study.save()
+
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Config Start Test Source',
+            status='active',
+        )
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=source,
+            is_complete=True,
+            consent_date=timezone.make_aware(datetime(2024, 1, 1)),
+            study_participant=self.study_participant,
+        )
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api')
+        self.client.get(url, {'data_type': 'battery'})
+
+        _, kwargs = mock_fetch.call_args
+        self.assertEqual(kwargs['start_date'].date(), datetime(2024, 6, 1).date())
+
+    @patch.object(AwareDataSource, 'fetch_data', return_value=[{'timestamp': 123, 'value': 42}])
+    @patch.object(AwareDataSource, 'get_data_types', return_value=['battery'])
+    def test_config_data_end_limits_fetched_data(self, mock_types, mock_fetch):
+        # Config data_end (Sep 1) should cap the end date passed to fetch_data
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {
+                    'data_end': '2024-09-01T00:00:00',
+                }
+            }
+        }
+        self.study.save()
+
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Config End Test Source',
+            status='active',
+        )
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=source,
+            is_complete=True,
+            consent_date=timezone.make_aware(datetime(2024, 1, 1)),
+            study_participant=self.study_participant,
+        )
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api')
+        self.client.get(url, {'data_type': 'battery'})
+
+        _, kwargs = mock_fetch.call_args
+        self.assertEqual(kwargs['end_date'].date(), datetime(2024, 9, 1).date())
+
+    @patch.object(AwareDataSource, 'fetch_data', return_value=[{'timestamp': 123, 'value': 42}])
+    @patch.object(AwareDataSource, 'get_data_types', return_value=['battery'])
+    def test_config_dates_override_when_changed(self, mock_types, mock_fetch):
+        # Changing the config's data_start should be reflected in subsequent API calls
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {
+                    'data_start': '2024-06-01T00:00:00',
+                }
+            }
+        }
+        self.study.save()
+
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Config Change Test Source',
+            status='active',
+        )
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=source,
+            is_complete=True,
+            consent_date=timezone.make_aware(datetime(2024, 1, 1)),
+            study_participant=self.study_participant,
+        )
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api')
+
+        self.client.get(url, {'data_type': 'battery'})
+        _, kwargs = mock_fetch.call_args
+        self.assertEqual(kwargs['start_date'].date(), datetime(2024, 6, 1).date())
+
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {
+                    'data_start': '2024-08-01T00:00:00',
+                }
+            }
+        }
+        self.study.save()
+
+        self.client.get(url, {'data_type': 'battery'})
+        _, kwargs = mock_fetch.call_args
+        self.assertEqual(kwargs['start_date'].date(), datetime(2024, 8, 1).date())
+
+    @patch.object(AwareDataSource, 'fetch_data', return_value=[{'timestamp': 123, 'value': 42}])
+    @patch.object(AwareDataSource, 'get_data_types', return_value=['battery'])
+    def test_query_param_narrows_config_window(self, mock_types, mock_fetch):
+        # Query params (March 1 - June 1) are narrower than config (Jan 1 - Dec 31),
+        # so fetch_data should receive the narrower query-param window
+        self.study.source_configurations = {
+            'AwareDataSource': {
+                'battery': {
+                    'data_start': '2024-01-01T00:00:00',
+                    'data_end': '2024-12-31T00:00:00',
+                }
+            }
+        }
+        self.study.save()
+
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='Query Param Narrow Test Source',
+            status='active',
+        )
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=source,
+            is_complete=True,
+            consent_date=timezone.make_aware(datetime(2024, 1, 1)),
+            study_participant=self.study_participant,
+        )
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api')
+        self.client.get(url, {'data_type': 'battery', 'start_date': '2024-03-01', 'end_date': '2024-06-01'})
+
+        _, kwargs = mock_fetch.call_args
+        self.assertEqual(kwargs['start_date'].date(), datetime(2024, 3, 1).date())
+        self.assertEqual(kwargs['end_date'].date(), datetime(2024, 6, 1).date())
+
+    @patch.object(AwareDataSource, 'fetch_data', return_value=[{'timestamp': 123, 'value': 42}])
+    @patch.object(AwareDataSource, 'get_data_types', return_value=['battery'])
+    def test_no_config_dates_falls_back_to_consent(self, mock_types, mock_fetch):
+        # Without source_configurations, fetch_data should receive the consent's data_start
+        source = AwareDataSource.objects.create(
+            profile=self.profile,
+            name='No Config Fallback Test Source',
+            status='active',
+        )
+        consent_start = timezone.make_aware(datetime(2024, 1, 1))
+        consent = Consent.objects.create(
+            participant=self.profile,
+            study=self.study,
+            source_type='AwareDataSource',
+            data_source=source,
+            is_complete=True,
+            consent_date=consent_start,
+            data_start=consent_start,
+            study_participant=self.study_participant,
+        )
+        self.client.login(username='researcher', password='testpass')
+        url = reverse('study_data_api')
+        self.client.get(url, {'data_type': 'battery'})
+
+        _, kwargs = mock_fetch.call_args
+        self.assertEqual(kwargs['start_date'].date(), datetime(2024, 1, 1).date())
 
 
 # ---------------------------------------------------------------------------
