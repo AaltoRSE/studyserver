@@ -13,7 +13,10 @@ study_server/local_settings.py
 
 # IDEs
 .vscode/
+.map/
 CLAUDE.md
+issues.json
+roadmap.json
 
 # Data
 data/
