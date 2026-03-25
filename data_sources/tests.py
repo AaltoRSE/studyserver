@@ -377,74 +377,14 @@ class GooglePortabilityDataSourceTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.profile = Profile.objects.create(user=self.user)
 
-    def test_create_google_source_redirects_to_oauth(self):
+    @patch('data_sources.views.portability_client.create_donation')
+    def test_create_google_source_redirects_to_portability(self, mock_create):
+        mock_create.return_value = {'id': 1, 'token': 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'status': 'pending'}
         self.client.login(username='testuser', password='testpass')
         response = self.client.get(reverse('add_data_source', args=['GooglePortability']))
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/data-sources/oauth/start/', response.url)
-
-    def test_extract_and_process_timestamp(self):
-        from cryptography.fernet import Fernet
-        key = Fernet.generate_key().decode()
-
-        source = GooglePortabilityDataSource.objects.create(
-            profile=self.profile,
-            name='Test Google Source',
-            processing_status='processing',
-            downloaded_files=['fake/path.zip'],
-        )
-
-        # Build a DataFrame mimicking niimpy output: DatetimeIndex with UTC timestamps
-        known_time = pd.Timestamp('2024-01-15 12:00:00', tz='UTC')
-        mock_df = pd.DataFrame(
-            {'title': ['test video']},
-            index=pd.DatetimeIndex([known_time], name='timestamp'),
-        )
-        expected_ms = int(known_time.timestamp() * 1000)
-
-        # Mock a single reader that returns our DataFrame
-        mock_reader = MagicMock(return_value=mock_df)
-        captured_csv = {}
-
-        def capture_write(path, data):
-            captured_csv[path] = data
-
-        with override_settings(ENCRYPTION_KEY=key):
-            with patch.object(source, 'DATA_TYPE_READERS', {'search': mock_reader}):
-                with patch.object(source, 'EXPECTED_DATA_TYPES', ['search']):
-                    with patch('data_sources.models.google_portability.crypto.decrypt_file_to_temp', return_value='/tmp/fake'):
-                        with patch('data_sources.models.google_portability.crypto.write_encrypted_bytes', side_effect=capture_write):
-                            with patch('data_sources.models.google_portability.os.path.exists', return_value=True):
-                                with patch('data_sources.models.google_portability.os.remove'):
-                                    source.extract_and_process()
-
-        # CSV should store datetime strings, not milliseconds
-        self.assertEqual(len(captured_csv), 1)
-        csv_bytes = list(captured_csv.values())[0]
-        df = pd.read_csv(io.BytesIO(csv_bytes), parse_dates=['timestamp'])
-
-        self.assertIn('timestamp', df.columns)
-        self.assertEqual(len(df), 1)
-        self.assertEqual(df['timestamp'].iloc[0], known_time)
-        self.assertEqual(df['device_id'].iloc[0], str(source.device_id))
-
-        # fetch_data should return milliseconds
-        with override_settings(ENCRYPTION_KEY=key):
-            with patch.object(source, 'get_data_types', return_value=['search']):
-                with patch('data_sources.models.google_portability.os.path.exists', return_value=True):
-                    with patch('data_sources.models.google_portability.crypto.decrypt_file_to_temp') as mock_decrypt:
-                        # Write the captured CSV to a real temp file for fetch_data to read
-                        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
-                        tmp.write(csv_bytes)
-                        tmp.close()
-                        mock_decrypt.return_value = tmp.name
-                        rows = source.fetch_data('search', limit=10)
-                        self.assertEqual(len(rows), 1)
-                        self.assertEqual(int(rows[0]['timestamp']), expected_ms)
-
-        # Verify source was marked as processed
-        source.refresh_from_db()
-        self.assertEqual(source.processing_status, 'processed')
+        self.assertIn('/donate/', response.url)
+        mock_create.assert_called_once_with('google_portability')
 
 
 # Test for TikTokPortabilityDataSource
@@ -453,11 +393,14 @@ class TikTokPortabilityDataSourceTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.profile = Profile.objects.create(user=self.user)
 
-    def test_create_tiktok_source_redirects_to_oauth(self):
+    @patch('data_sources.views.portability_client.create_donation')
+    def test_create_tiktok_source_redirects_to_portability(self, mock_create):
+        mock_create.return_value = {'id': 2, 'token': 'b2c3d4e5-f6a7-8901-bcde-f12345678901', 'status': 'pending'}
         self.client.login(username='testuser', password='testpass')
         response = self.client.get(reverse('add_data_source', args=['TikTokPortability']))
         self.assertEqual(response.status_code, 302)
-        self.assertIn('/data-sources/oauth/start/', response.url)
+        self.assertIn('/donate/', response.url)
+        mock_create.assert_called_once_with('tiktok_portability')
 
 
 # Test for DataSource (base class)

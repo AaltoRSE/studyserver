@@ -22,13 +22,13 @@ class AwareDataSourceAdmin(PolymorphicChildModelAdmin):
 class GooglePortabilityDataSourceAdmin(PolymorphicChildModelAdmin):
     base_model = DataSource
     show_in_index = True
-    readonly_fields = COMMON_READ_ONLY_FIELDS + ('data_job_ids', 'access_token', 'refresh_token',)
+    readonly_fields = COMMON_READ_ONLY_FIELDS + ('donation_id', 'donation_token',)
 
 @admin.register(TikTokPortabilityDataSource)
 class TikTokPortabilityDataSourceAdmin(PolymorphicChildModelAdmin):
     base_model = DataSource
     show_in_index = True
-    readonly_fields = COMMON_READ_ONLY_FIELDS + ('access_token', 'refresh_token',)
+    readonly_fields = COMMON_READ_ONLY_FIELDS + ('donation_id', 'donation_token',)
 
 
 @admin.register(DataSource)

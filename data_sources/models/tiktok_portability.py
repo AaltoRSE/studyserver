@@ -1,253 +1,109 @@
-from django.db import models
-from django.shortcuts import redirect
-from django.urls import reverse
+"""TikTok Portability data source — proxies to portability-server."""
+import logging
+
 from django.conf import settings
-from django.utils import timezone
-from datetime import timedelta
-import hashlib
-import base64
-import requests
-import secrets
-from urllib.parse import urlencode
-from data_sources.utils import crypto
+from django.db import models
+
 from .base import DataSource
+from data_sources import portability_client
+
+logger = logging.getLogger(__name__)
 
 
 class TikTokPortabilityDataSource(DataSource):
-    DEFAULT_REQUEST_TIMEOUT = 10
     PROCESSING_STATUS_CHOICES = (
+        ('pending', 'Pending'),
         ('authorized', 'Authorized, waiting for data'),
-        ('data_requested', 'Data portability request submitted'),
         ('processing', 'Processing'),
         ('processed', 'Processed successfully'),
         ('error', 'Error during processing'),
     )
-    
-    access_token = models.CharField(max_length=500, blank=True, null=True)
-    refresh_token = models.CharField(max_length=500, blank=True, null=True)
-    token_expiry = models.DateTimeField(null=True, blank=True)
-    tiktok_user_id = models.CharField(max_length=255, blank=True, unique=True, null=True)
-    code_verifier = models.CharField(max_length=200, blank=True)
 
+    donation_id = models.IntegerField(null=True, blank=True)
+    donation_token = models.UUIDField(null=True, blank=True)
     processing_status = models.CharField(
         max_length=20,
         choices=PROCESSING_STATUS_CHOICES,
-        default='authorized',
+        default='pending',
     )
-    processing_log = models.TextField(blank=True, null=True)
+    processing_log = models.TextField(blank=True, default='')
 
     requires_setup = True
-    requires_confirmation = True
+    requires_confirmation = False
 
     @property
     def display_type(self):
         return "TikTok Portability Data"
 
     def get_setup_url(self):
-        return reverse('auth_start', args=[self.id])
-    
-    def get_confirm_url(self):
-        # Only provide the confirmation URL when the generic DataSource
-        # `status` indicates setup is still pending. If the source has
-        # moved to `processing` or `active`, OAuth/confirmation is not
-        # required and we return None so templates won't attempt to
-        # reverse the URL (which previously used an incorrect arg).
-        if getattr(self, 'status', None) != 'pending':
-            return None
-        return reverse('auth_callback')
-    
+        if self.donation_token:
+            return f"{settings.PORTABILITY_SERVER_URL}/donate/{self.donation_token}/"
+        return None
+
     def get_data_types(self):
-        return ['tiktok_portability']
+        if not self.donation_id:
+            return []
+        try:
+            result = portability_client.get_data(self.donation_id)
+            return result.get('data_types', [])
+        except Exception as e:
+            logger.warning("Failed to get data types from portability server: %s", e)
+            return []
 
     def fetch_data(self, data_type, limit=1000, start_date=None, end_date=None, offset=0):
-        if data_type != 'tiktok_portability':
+        if not self.donation_id:
             return []
-
-        if self.processing_status != 'processed':
+        try:
+            result = portability_client.get_data(
+                self.donation_id,
+                data_type=data_type,
+                start_date=start_date,
+                end_date=end_date,
+                limit=limit,
+                offset=offset,
+            )
+            return result.get('data', [])
+        except Exception as e:
+            logger.warning("Failed to fetch data from portability server: %s", e)
             return []
-
-        return [{
-            'data_type': 'tiktok_portability',
-            'data': {'message': 'TikTok portability data fetched successfully.'},
-            'fetched_at': timezone.now(),
-        }]
 
     def count_rows(self, data_type, start_date=None, end_date=None):
-        if data_type != 'tiktok_portability':
+        if not self.donation_id:
             return 0
-        if self.processing_status != 'processed':
+        try:
+            result = portability_client.get_data(
+                self.donation_id,
+                data_type=data_type,
+                start_date=start_date,
+                end_date=end_date,
+                limit=0,
+            )
+            return result.get('count', 0)
+        except Exception as e:
+            logger.warning("Failed to count rows from portability server: %s", e)
             return 0
-        # This source returns a single aggregated object when processed
-        return 1
-    
 
-    @staticmethod
-    def generate_pkce_pair():
-        """Generate PKCE code_verifier and code_challenge."""
-        # Generate random code verifier (43-128 chars)
-        code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8')
-        code_verifier = code_verifier.replace('=', '')
-        
-        # Create code challenge: base64-url-encoded SHA256 hash
-        code_sha = hashlib.sha256(code_verifier.encode('utf-8')).digest()
-        code_challenge = base64.urlsafe_b64encode(code_sha).decode('utf-8').replace('=', '')
-        
-        return code_verifier, code_challenge
-
-    def _store_token_info(self, token_info):
-        """Store token info dict into model fields, encrypting tokens.
-
-        Handles encryption errors narrowly and records messages into
-        `processing_log` without swallowing unrelated exceptions.
-        """
-        data = token_info.get('data', {})
-
-        # access token
-        try:
-            access_plain = data['access_token']
-        except KeyError:
-            raise KeyError("access_token missing from token_info")
-
-        try:
-            self.access_token = crypto.encrypt_text(access_plain)
-        except (ValueError, TypeError) as e:
-            self.access_token = None
-            self.processing_log = (self.processing_log or '') + f"Failed to encrypt access_token: {e}\n"
-
-        # refresh token (optional)
-        if data.get('refresh_token'):
+    def revoke_before_delete(self):
+        if self.donation_id:
             try:
-                self.refresh_token = crypto.encrypt_text(data['refresh_token'])
-            except (ValueError, TypeError) as e:
-                self.refresh_token = None
-                self.processing_log = (self.processing_log or '') + f"Failed to encrypt refresh_token: {e}\n"
-        else:
-            self.refresh_token = ''
+                portability_client.delete_donation(self.donation_id)
+            except Exception as e:
+                logger.warning("Failed to delete donation on portability server: %s", e)
 
-        # expiry
-        expires_in = data.get('expires_in')
-        if expires_in is not None:
-            try:
-                self.token_expiry = timezone.now() + timedelta(seconds=int(expires_in))
-            except (TypeError, ValueError):
-                self.token_expiry = None
-                self.processing_log = (self.processing_log or '') + "Invalid expires_in value; token_expiry not set.\n"
-
-        # user id
-        if data.get('open_id'):
-            self.tiktok_user_id = data.get('open_id')
-
-        # ensure the model status reflects authorization
-        self.processing_status = 'authorized'
-        # clear temporary PKCE verifier
-        self.code_verifier = ''
-
-
-    def get_auth_url(self, request):
-        code_verifier, code_challenge = self.generate_pkce_pair()
-        self.code_verifier = code_verifier
-        self.oauth_state = secrets.token_urlsafe(16)
-        self.save()
-
-        redirect_url = request.build_absolute_uri(
-            reverse('auth_callback')
-        )
-
-        params = {
-            'client_key': settings.TIKTOK_CLIENT_KEY,
-            'response_type': 'code',
-            'scope': 'user.info.basic',
-            'redirect_uri': redirect_url,
-            'state': self.oauth_state,
-            'code_challenge': code_challenge,
-            'code_challenge_method': 'S256',
-        }
-
-        auth_url = f"https://www.tiktok.com/v2/auth/authorize?{urlencode(params)}"
-        return auth_url
-    
-    def handle_auth_callback(self, request):
-        code = request.GET.get('code')
-        if not code:
-            return False, "Authorization code not provided."
-        
-        if not self.code_verifier:
-            return False, "Missing code verifier. Authorization may have expired."
-
-        token_url = 'https://open.tiktokapis.com/v2/oauth/token/'
-        token_data = {
-            'code': code,
-            'client_key': settings.TIKTOK_CLIENT_KEY,
-            'client_secret': settings.TIKTOK_CLIENT_SECRET,
-            'redirect_uri': request.build_absolute_uri(reverse('auth_callback')),
-            'grant_type': 'authorization_code',
-            'code_verifier': self.code_verifier,
-        }
-
-        try:
-            response = requests.post(token_url, data=token_data, timeout=self.DEFAULT_REQUEST_TIMEOUT)
-            response.raise_for_status()
-            token_info = response.json()
-            # Reuse helper to store and encrypt token fields
-            try:
-                self._store_token_info(token_info)
-            except KeyError:
-                return False, "Invalid response from TikTok during token exchange."
-
-            try:
-                # Mark as processing so the dashboard shows that setup is complete
-                # and we're waiting for data to be prepared.
-                self.status = 'processing'
-            except Exception:
-                pass
-
-            self.save()
-            return True, "Authorization successful."
-        
-        except requests.RequestException as e:
-            return False, f"Error during token exchange: {str(e)}"
-        except KeyError:
-            return False, "Invalid response from TikTok during token exchange."
-        
-    def refresh_access_token(self):
-        if not self.refresh_token:
-            return False, "No refresh token available."
-
-        token_url = 'https://sandbox.tiktok.com/auth/token/'
-        # decrypt refresh token for request
-        try:
-            refresh_token_plain = crypto.decrypt_text(self.refresh_token)
-        except (ValueError, TypeError) as e:
-            # If decryption fails, do not attempt to use the encrypted blob
-            self.processing_log = (self.processing_log or '') + f"Failed to decrypt refresh_token: {e}\n"
-            return False, "Failed to decrypt refresh token."
-        token_data = {
-            'client_key': settings.TIKTOK_CLIENT_KEY,
-            'client_secret': settings.TIKTOK_CLIENT_SECRET,
-            'grant_type': 'refresh_token',
-            'refresh_token': refresh_token_plain,
-        }
-
-        try:
-            response = requests.post(token_url, data=token_data, timeout=self.DEFAULT_REQUEST_TIMEOUT)
-            response.raise_for_status()
-            token_info = response.json()
-
-            try:
-                # Reuse storage helper which handles encryption and expiry
-                self._store_token_info(token_info)
-            except KeyError:
-                return False, "Invalid response from TikTok during token refresh."
-
-            self.save()
-            return True, "Access token refreshed successfully."
-        
-        except requests.RequestException as e:
-            return False, f"Error during token refresh: {str(e)}"
-        except KeyError:
-            return False, "Invalid response from TikTok during token refresh."
-        
     def _process_data(self):
-        if not self.has_active_consent():
-            return False, "No consent found."
-        pass
+        """Poll portability-server for status updates."""
+        if not self.donation_id:
+            return
+        try:
+            donation = portability_client.get_donation(self.donation_id)
+            remote_status = donation.get('status', '')
+            if remote_status == 'processed':
+                self.processing_status = 'processed'
+                self.status = 'active'
+            elif remote_status == 'error':
+                self.processing_status = 'error'
+            elif remote_status in ('authorized', 'processing'):
+                self.processing_status = remote_status
+            self.save()
+        except Exception as e:
+            logger.warning("Failed to poll portability server: %s", e)

@@ -143,6 +143,10 @@ GOOGLE_OAUTH_CLIENT_SECRET = env('GOOGLE_OAUTH_CLIENT_SECRET', default='')
 TIKTOK_CLIENT_KEY = env('TIKTOK_CLIENT_KEY', default='')
 TIKTOK_CLIENT_SECRET = env('TIKTOK_CLIENT_SECRET', default='')
 
+# Portability server
+PORTABILITY_SERVER_URL = env('PORTABILITY_SERVER_URL', default='http://localhost:8001')
+PORTABILITY_SERVER_TOKEN = env('PORTABILITY_SERVER_TOKEN', default='')
+
 
 # Processing task automation
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
