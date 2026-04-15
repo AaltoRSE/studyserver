@@ -5,7 +5,7 @@ from django.conf import settings
 from django.db import models
 
 from .base import DataSource
-from data_sources import portability_client
+from . import portability_client
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,7 @@ class TikTokPortabilityDataSource(DataSource):
                 self.processing_status = 'error'
             elif remote_status in ('authorized', 'processing'):
                 self.processing_status = remote_status
+                self.status = 'processing'
             self.save()
         except Exception as e:
             logger.warning("Failed to poll portability server: %s", e)
