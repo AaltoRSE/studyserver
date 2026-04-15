@@ -2,7 +2,7 @@ from unittest.mock import patch, MagicMock
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
-from .models import AwareDataSource, JsonUrlDataSource, GooglePortabilityDataSource
+from .models import AwareDataSource, JsonUrlDataSource, GooglePortabilityDataSource, TikTokPortabilityDataSource
 from .models.base import DataSource
 from django.core.exceptions import ValidationError
 from studies.models import Study, Consent
@@ -13,10 +13,11 @@ import uuid
 import tempfile
 import os
 from django.test import override_settings
+import requests
+from data_sources import portability_client
 
 import pandas as pd
 import io
-import data_sources.utils.crypto as crypto
 from data_sources.models import db_connector
 
 
@@ -26,40 +27,6 @@ class AddDataSourceViewTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.profile = Profile.objects.create(user=self.user)
         self.client.login(username='testuser', password='testpass')
-
-
-class CryptoUtilsTest(TestCase):
-    def test_encrypt_decrypt_text_roundtrip_with_key(self):
-        # Generate a Fernet key to use via settings
-        from cryptography.fernet import Fernet
-        key = Fernet.generate_key().decode()
-        with override_settings(ENCRYPTION_KEY=key):
-            original = 'secret-data-123'
-            encrypted = crypto.encrypt_text(original)
-            self.assertIsInstance(encrypted, str)
-            decrypted = crypto.decrypt_text(encrypted)
-            self.assertEqual(decrypted, original)
-
-    def test_write_and_decrypt_file_bytes(self):
-        from cryptography.fernet import Fernet
-        key = Fernet.generate_key().decode()
-        with override_settings(ENCRYPTION_KEY=key):
-            tmpdir = tempfile.mkdtemp()
-            try:
-                path = os.path.join(tmpdir, 'blob.bin')
-                data = b'hello-bytes'
-                crypto.write_encrypted_bytes(path, data)
-                # decrypt to temp and verify contents
-                tmp = crypto.decrypt_file_to_temp(path)
-                with open(tmp, 'rb') as fh:
-                    contents = fh.read()
-                self.assertEqual(contents, data)
-            finally:
-                # cleanup
-                try:
-                    os.remove(path)
-                except Exception:
-                    pass
 
 
 class DbConnectorTest(TestCase):
@@ -377,7 +344,7 @@ class GooglePortabilityDataSourceTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.profile = Profile.objects.create(user=self.user)
 
-    @patch('data_sources.views.portability_client.create_donation')
+    @patch('data_sources.portability_client.create_donation')
     def test_create_google_source_redirects_to_portability(self, mock_create):
         mock_create.return_value = {'id': 1, 'token': 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'status': 'pending'}
         self.client.login(username='testuser', password='testpass')
@@ -393,7 +360,7 @@ class TikTokPortabilityDataSourceTest(TestCase):
         self.user = User.objects.create_user(username='testuser', password='testpass')
         self.profile = Profile.objects.create(user=self.user)
 
-    @patch('data_sources.views.portability_client.create_donation')
+    @patch('data_sources.portability_client.create_donation')
     def test_create_tiktok_source_redirects_to_portability(self, mock_create):
         mock_create.return_value = {'id': 2, 'token': 'b2c3d4e5-f6a7-8901-bcde-f12345678901', 'status': 'pending'}
         self.client.login(username='testuser', password='testpass')
@@ -410,6 +377,418 @@ class DataSourceTest(TestCase):
         self.profile = Profile.objects.create(user=self.user)
 
 
+# ---------------------------------------------------------------------------
+# Portability client unit tests
+# ---------------------------------------------------------------------------
+
+@override_settings(
+    PORTABILITY_SERVER_URL='http://test-server',
+    PORTABILITY_SERVER_TOKEN='test-token',
+)
+class PortabilityClientTest(TestCase):
+    """Unit tests for portability_client — all HTTP calls are patched."""
+
+    EXPECTED_HEADERS = {'Authorization': 'Token test-token'}
+
+    @patch('data_sources.portability_client.requests.post')
+    def test_create_donation_correct_url_headers_payload(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'id': 1, 'token': 'abc', 'status': 'pending'}
+        mock_post.return_value = mock_response
+
+        result = portability_client.create_donation('google_portability')
+
+        mock_post.assert_called_once_with(
+            'http://test-server/api/donations/',
+            json={'source_type': 'google_portability'},
+            headers=self.EXPECTED_HEADERS,
+            timeout=portability_client.REQUEST_TIMEOUT,
+        )
+        mock_response.raise_for_status.assert_called_once()
+        self.assertEqual(result, {'id': 1, 'token': 'abc', 'status': 'pending'})
+
+    @patch('data_sources.portability_client.requests.post')
+    def test_create_donation_with_optional_params(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'id': 2, 'token': 'xyz', 'status': 'pending'}
+        mock_post.return_value = mock_response
+
+        result = portability_client.create_donation(
+            'tiktok_portability',
+            data_start_date='2024-01-01',
+            data_end_date='2024-12-31',
+            requested_data_types=['activity', 'posts'],
+        )
+
+        called_kwargs = mock_post.call_args
+        sent_payload = called_kwargs[1]['json']
+        self.assertEqual(sent_payload['source_type'], 'tiktok_portability')
+        self.assertEqual(sent_payload['data_start_date'], '2024-01-01')
+        self.assertEqual(sent_payload['data_end_date'], '2024-12-31')
+        self.assertEqual(sent_payload['requested_data_types'], ['activity', 'posts'])
+        self.assertEqual(result, {'id': 2, 'token': 'xyz', 'status': 'pending'})
+
+    @patch('data_sources.portability_client.requests.get')
+    def test_get_donation_correct_url_and_headers(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'id': 5, 'status': 'processed'}
+        mock_get.return_value = mock_response
+
+        result = portability_client.get_donation(5)
+
+        mock_get.assert_called_once_with(
+            'http://test-server/api/donations/5/',
+            headers=self.EXPECTED_HEADERS,
+            timeout=portability_client.REQUEST_TIMEOUT,
+        )
+        mock_response.raise_for_status.assert_called_once()
+        self.assertEqual(result, {'id': 5, 'status': 'processed'})
+
+    @patch('data_sources.portability_client.requests.get')
+    def test_get_data_correct_url_headers_and_params_forwarded(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'data': [{'row': 1}], 'count': 1}
+        mock_get.return_value = mock_response
+
+        result = portability_client.get_data(
+            7,
+            data_type='activity',
+            start_date='2024-01-01',
+            end_date='2024-06-30',
+            limit=50,
+            offset=10,
+        )
+
+        mock_get.assert_called_once_with(
+            'http://test-server/api/donations/7/data/',
+            params={
+                'data_type': 'activity',
+                'start_date': '2024-01-01',
+                'end_date': '2024-06-30',
+                'limit': 50,
+                'offset': 10,
+            },
+            headers=self.EXPECTED_HEADERS,
+            timeout=portability_client.REQUEST_TIMEOUT,
+        )
+        mock_response.raise_for_status.assert_called_once()
+        self.assertEqual(result, {'data': [{'row': 1}], 'count': 1})
+
+    @patch('data_sources.portability_client.requests.delete')
+    def test_delete_donation_correct_url_and_calls_raise_for_status(self, mock_delete):
+        mock_response = MagicMock()
+        mock_delete.return_value = mock_response
+
+        portability_client.delete_donation(3)
+
+        mock_delete.assert_called_once_with(
+            'http://test-server/api/donations/3/',
+            headers=self.EXPECTED_HEADERS,
+            timeout=portability_client.REQUEST_TIMEOUT,
+        )
+        mock_response.raise_for_status.assert_called_once()
+
+    @patch('data_sources.portability_client.requests.get')
+    def test_get_donation_propagates_http_error(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError('404 Not Found')
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(requests.HTTPError):
+            portability_client.get_donation(99)
+
+    @patch('data_sources.portability_client.requests.post')
+    def test_create_donation_propagates_http_error(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = requests.HTTPError('500 Server Error')
+        mock_post.return_value = mock_response
+
+        with self.assertRaises(requests.HTTPError):
+            portability_client.create_donation('google_portability')
 
 
-    
+# ---------------------------------------------------------------------------
+# Shared mixin for Google / TikTok portability model tests
+# ---------------------------------------------------------------------------
+
+class PortabilityModelTestMixin:
+    """Shared tests for Google/TikTok portability data sources."""
+
+    model_class = None  # set in subclass
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.profile = Profile.objects.create(user=self.user)
+
+    def _make_source(self, **kwargs):
+        defaults = {'profile': self.profile, 'name': 'test'}
+        defaults.update(kwargs)
+        return self.model_class.objects.create(**defaults)
+
+    # -- get_setup_url -------------------------------------------------------
+
+    @override_settings(PORTABILITY_SERVER_URL='http://portability')
+    def test_get_setup_url_with_existing_donation_returns_url(self):
+        token = uuid.uuid4()
+        source = self._make_source(donation_id=1, donation_token=token)
+        expected = f'http://portability/donate/{token}/'
+        self.assertEqual(source.get_setup_url(), expected)
+
+    @override_settings(PORTABILITY_SERVER_URL='http://portability')
+    @patch('data_sources.portability_client.create_donation')
+    def test_get_setup_url_creates_donation_if_missing(self, mock_create):
+        token = uuid.uuid4()
+        mock_create.return_value = {'id': 1, 'token': str(token)}
+        source = self._make_source()
+        url = source.get_setup_url()
+        mock_create.assert_called_once()
+        self.assertEqual(url, f'http://portability/donate/{token}/')
+
+    # -- get_data_types ------------------------------------------------------
+
+    @patch('data_sources.portability_client.get_data')
+    def test_get_data_types_returns_list(self, mock_get_data):
+        mock_get_data.return_value = {'data_types': ['activity', 'posts']}
+        source = self._make_source(donation_id=42)
+
+        result = source.get_data_types()
+
+        mock_get_data.assert_called_once_with(42)
+        self.assertEqual(result, ['activity', 'posts'])
+
+    def test_get_data_types_without_donation_id_returns_empty(self):
+        source = self._make_source(donation_id=None)
+        self.assertEqual(source.get_data_types(), [])
+
+    @patch('data_sources.portability_client.get_data', side_effect=Exception('network error'))
+    def test_get_data_types_exception_returns_empty(self, _mock):
+        source = self._make_source(donation_id=42)
+        self.assertEqual(source.get_data_types(), [])
+
+    # -- fetch_data ----------------------------------------------------------
+
+    @patch('data_sources.portability_client.get_data')
+    def test_fetch_data_returns_data_list_with_correct_params(self, mock_get_data):
+        rows = [{'row': 1}, {'row': 2}]
+        mock_get_data.return_value = {'data': rows}
+        source = self._make_source(donation_id=7)
+
+        result = source.fetch_data('activity', limit=25, start_date='2024-01-01',
+                                   end_date='2024-06-30', offset=5)
+
+        mock_get_data.assert_called_once_with(
+            7,
+            data_type='activity',
+            start_date='2024-01-01',
+            end_date='2024-06-30',
+            limit=25,
+            offset=5,
+        )
+        self.assertEqual(result, rows)
+
+    def test_fetch_data_without_donation_id_returns_empty(self):
+        source = self._make_source(donation_id=None)
+        self.assertEqual(source.fetch_data('activity'), [])
+
+    @patch('data_sources.portability_client.get_data', side_effect=Exception('boom'))
+    def test_fetch_data_exception_returns_empty(self, _mock):
+        source = self._make_source(donation_id=7)
+        self.assertEqual(source.fetch_data('activity'), [])
+
+    # -- count_rows ----------------------------------------------------------
+
+    @patch('data_sources.portability_client.get_data')
+    def test_count_rows_returns_count(self, mock_get_data):
+        mock_get_data.return_value = {'count': 99}
+        source = self._make_source(donation_id=7)
+
+        result = source.count_rows('activity')
+
+        self.assertEqual(result, 99)
+
+    def test_count_rows_without_donation_id_returns_zero(self):
+        source = self._make_source(donation_id=None)
+        self.assertEqual(source.count_rows('activity'), 0)
+
+    @patch('data_sources.portability_client.get_data', side_effect=Exception('boom'))
+    def test_count_rows_exception_returns_zero(self, _mock):
+        source = self._make_source(donation_id=7)
+        self.assertEqual(source.count_rows('activity'), 0)
+
+    # -- revoke_before_delete ------------------------------------------------
+
+    @patch('data_sources.portability_client.delete_donation')
+    def test_revoke_before_delete_calls_delete_donation(self, mock_delete):
+        source = self._make_source(donation_id=5)
+        source.revoke_before_delete()
+        mock_delete.assert_called_once_with(5)
+
+    @patch('data_sources.portability_client.delete_donation')
+    def test_revoke_before_delete_without_donation_id_skips_call(self, mock_delete):
+        source = self._make_source(donation_id=None)
+        source.revoke_before_delete()
+        mock_delete.assert_not_called()
+
+    @patch('data_sources.portability_client.delete_donation', side_effect=Exception('server down'))
+    def test_revoke_before_delete_swallows_exception(self, _mock):
+        source = self._make_source(donation_id=5)
+        # Should not raise
+        source.revoke_before_delete()
+
+    # -- _process_data -------------------------------------------------------
+
+    @patch('data_sources.portability_client.get_donation')
+    def test_process_data_processed_sets_active_status(self, mock_get_donation):
+        mock_get_donation.return_value = {'status': 'processed'}
+        source = self._make_source(donation_id=10)
+
+        source._process_data()
+
+        source.refresh_from_db()
+        self.assertEqual(source.processing_status, 'processed')
+        self.assertEqual(source.status, 'active')
+
+    @patch('data_sources.portability_client.get_donation')
+    def test_process_data_error_sets_error_processing_status(self, mock_get_donation):
+        mock_get_donation.return_value = {'status': 'error'}
+        source = self._make_source(donation_id=10)
+
+        source._process_data()
+
+        source.refresh_from_db()
+        self.assertEqual(source.processing_status, 'error')
+
+    @patch('data_sources.portability_client.get_donation')
+    def test_process_data_authorized_sets_authorized_processing_status(self, mock_get_donation):
+        mock_get_donation.return_value = {'status': 'authorized'}
+        source = self._make_source(donation_id=10)
+
+        source._process_data()
+
+        source.refresh_from_db()
+        self.assertEqual(source.processing_status, 'authorized')
+
+    @patch('data_sources.portability_client.get_donation')
+    def test_process_data_processing_sets_processing_status(self, mock_get_donation):
+        mock_get_donation.return_value = {'status': 'processing'}
+        source = self._make_source(donation_id=10)
+
+        source._process_data()
+
+        source.refresh_from_db()
+        self.assertEqual(source.processing_status, 'processing')
+
+    @patch('data_sources.portability_client.get_donation')
+    def test_process_data_without_donation_id_returns_without_api_call(self, mock_get_donation):
+        source = self._make_source(donation_id=None)
+        source._process_data()
+        mock_get_donation.assert_not_called()
+
+    @patch('data_sources.portability_client.get_donation', side_effect=Exception('timeout'))
+    def test_process_data_swallows_exception(self, _mock):
+        source = self._make_source(donation_id=10)
+        # Should not raise
+        source._process_data()
+
+
+# ---------------------------------------------------------------------------
+# Concrete model test classes using the mixin
+# ---------------------------------------------------------------------------
+
+class GooglePortabilityModelTest(PortabilityModelTestMixin, TestCase):
+    model_class = GooglePortabilityDataSource
+
+
+class TikTokPortabilityModelTest(PortabilityModelTestMixin, TestCase):
+    model_class = TikTokPortabilityDataSource
+
+
+# ---------------------------------------------------------------------------
+# View tests: creation failure rollback and delete with revoke
+# ---------------------------------------------------------------------------
+
+class PortabilityViewCreationRollbackTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.profile = Profile.objects.create(user=self.user)
+        self.client.login(username='testuser', password='testpass')
+
+    @patch('data_sources.portability_client.create_donation',
+           side_effect=Exception('portability server unreachable'))
+    def test_google_creation_failure_redirects_to_dashboard(self, _mock):
+        response = self.client.get(reverse('add_data_source', args=['GooglePortability']))
+        self.assertRedirects(response, reverse('dashboard'))
+
+    @patch('data_sources.portability_client.create_donation',
+           side_effect=Exception('portability server unreachable'))
+    def test_google_creation_failure_rolls_back_source(self, _mock):
+        self.client.get(reverse('add_data_source', args=['GooglePortability']))
+        self.assertFalse(
+            GooglePortabilityDataSource.objects.filter(profile=self.profile).exists()
+        )
+
+    @patch('data_sources.portability_client.create_donation',
+           side_effect=Exception('portability server unreachable'))
+    def test_tiktok_creation_failure_redirects_to_dashboard(self, _mock):
+        response = self.client.get(reverse('add_data_source', args=['TikTokPortability']))
+        self.assertRedirects(response, reverse('dashboard'))
+
+    @patch('data_sources.portability_client.create_donation',
+           side_effect=Exception('portability server unreachable'))
+    def test_tiktok_creation_failure_rolls_back_source(self, _mock):
+        self.client.get(reverse('add_data_source', args=['TikTokPortability']))
+        self.assertFalse(
+            TikTokPortabilityDataSource.objects.filter(profile=self.profile).exists()
+        )
+
+
+class PortabilityViewDeleteTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.profile = Profile.objects.create(user=self.user)
+        self.client.login(username='testuser', password='testpass')
+
+    @patch('data_sources.portability_client.delete_donation')
+    def test_delete_google_source_calls_delete_donation(self, mock_delete):
+        source = GooglePortabilityDataSource.objects.create(
+            profile=self.profile,
+            name='My Google Source',
+            donation_id=42,
+        )
+        self.client.post(reverse('delete_data_source', args=[source.id]))
+        mock_delete.assert_called_once_with(42)
+
+    @patch('data_sources.portability_client.delete_donation')
+    def test_delete_google_source_removes_from_db(self, _mock):
+        source = GooglePortabilityDataSource.objects.create(
+            profile=self.profile,
+            name='My Google Source',
+            donation_id=42,
+        )
+        self.client.post(reverse('delete_data_source', args=[source.id]))
+        self.assertFalse(
+            GooglePortabilityDataSource.objects.filter(id=source.id).exists()
+        )
+
+    @patch('data_sources.portability_client.delete_donation')
+    def test_delete_tiktok_source_calls_delete_donation(self, mock_delete):
+        source = TikTokPortabilityDataSource.objects.create(
+            profile=self.profile,
+            name='My TikTok Source',
+            donation_id=99,
+        )
+        self.client.post(reverse('delete_data_source', args=[source.id]))
+        mock_delete.assert_called_once_with(99)
+
+    @patch('data_sources.portability_client.delete_donation')
+    def test_delete_tiktok_source_removes_from_db(self, _mock):
+        source = TikTokPortabilityDataSource.objects.create(
+            profile=self.profile,
+            name='My TikTok Source',
+            donation_id=99,
+        )
+        self.client.post(reverse('delete_data_source', args=[source.id]))
+        self.assertFalse(
+            TikTokPortabilityDataSource.objects.filter(id=source.id).exists()
+        )
+

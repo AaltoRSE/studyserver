@@ -54,7 +54,8 @@ class Study(models.Model):
         help_text=(
             "Dict mapping source type names to their configuration. "
             "Each entry should have at minimum a 'status' key ('required' or 'optional'). "
-            "Optional keys: 'data_start', 'data_end' (ISO datetime strings), 'config_file'. "
+            "Optional keys: 'data_start', 'data_end' (ISO datetime strings), 'config_file', "
+            "'requested_data_types' (list of strings, for portability sources). "
             "Example: {\"AwareDataSource\": {\"status\": \"required\", \"data_start\": \"2024-01-01T00:00:00\"}}"
         )
     )

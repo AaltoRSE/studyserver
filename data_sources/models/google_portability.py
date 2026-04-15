@@ -36,7 +36,39 @@ class GooglePortabilityDataSource(DataSource):
     def display_type(self):
         return "Google Portability Data"
 
+    PORTABILITY_SOURCE_TYPE = 'google_portability'
+
+    def _get_study_config(self):
+        """Look up study configuration for this source via its linked consent."""
+        model_name = type(self).__name__
+        consent = self.consents.select_related('study').first()
+        if not consent:
+            return {}
+        study = consent.study
+        kwargs = {}
+        data_start, data_end = study.get_source_dates(model_name)
+        if data_start:
+            kwargs['data_start_date'] = data_start.date()
+        if data_end:
+            kwargs['data_end_date'] = data_end.date()
+        source_config = study.source_configurations.get(model_name, {})
+        if isinstance(source_config, dict) and source_config.get('requested_data_types'):
+            kwargs['requested_data_types'] = source_config['requested_data_types']
+        return kwargs
+
+    def _create_donation(self):
+        """Create a donation on the portability server and store the result."""
+        kwargs = self._get_study_config()
+        donation = portability_client.create_donation(
+            self.PORTABILITY_SOURCE_TYPE, **kwargs
+        )
+        self.donation_id = donation['id']
+        self.donation_token = donation['token']
+        self.save()
+
     def get_setup_url(self):
+        if not self.donation_id:
+            self._create_donation()
         if self.donation_token:
             return f"{settings.PORTABILITY_SERVER_URL}/donate/{self.donation_token}/"
         return None

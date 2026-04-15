@@ -10,7 +10,6 @@ from urllib.parse import urlencode
 from . import forms
 from .forms import JsonUrlDataSourceForm, AwareDataSourceForm, DataFilterForm
 from .models import DataSource, AwareDataSource, JsonUrlDataSource
-from . import portability_client
 from studies.models import Consent
 from datetime import date, datetime, time, timedelta
 import zoneinfo
@@ -104,30 +103,18 @@ def add_data_source(request, source_type):
             new_source.status = 'active'
         new_source.save()
 
-        # Create donation on portability-server for portability sources
-        if hasattr(new_source, 'donation_id'):
-            portability_source_type = {
-                'GooglePortabilityDataSource': 'google_portability',
-                'TikTokPortabilityDataSource': 'tiktok_portability',
-            }.get(model_name)
-            if portability_source_type:
-                try:
-                    donation = portability_client.create_donation(portability_source_type)
-                    new_source.donation_id = donation['id']
-                    new_source.donation_token = donation['token']
-                    new_source.save()
-                except Exception as e:
-                    messages.error(request, f"Failed to create donation on portability server: {e}")
-                    new_source.delete()
-                    return redirect('dashboard')
-
         # Link to consent if coming from consent workflow
         if consent_id:
             link_consent_to_source(consent_id, new_source, request.user.profile)
         
 
         if new_source.requires_setup:
-            base_url = new_source.get_setup_url()
+            try:
+                base_url = new_source.get_setup_url()
+            except Exception as e:
+                messages.error(request, f"Failed to set up data source: {e}")
+                new_source.delete()
+                return redirect('dashboard')
             if consent_id:
                 query_params = urlencode({'consent_id': consent_id})
                 return redirect(f'{base_url}?{query_params}')
