@@ -10,3 +10,7 @@ niimpy
 celery
 redis
 cryptography
+sphinx
+myst-parser
+sphinx-rtd-theme
+django-survey-and-report
